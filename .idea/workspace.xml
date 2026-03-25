@@ -46,7 +46,7 @@
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "master",
+    "git-widget-placeholder": "main",
     "junie.onboarding.icon.badge.shown": "true",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -108,7 +108,7 @@
       <updated>1774298129949</updated>
       <workItem from="1774298130974" duration="1898000" />
       <workItem from="1774300061500" duration="832000" />
-      <workItem from="1774452864793" duration="4652000" />
+      <workItem from="1774452864793" duration="5691000" />
     </task>
     <servers />
   </component>
