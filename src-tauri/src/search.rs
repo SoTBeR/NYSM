@@ -11,6 +11,7 @@ use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::{Field, Schema, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED};
 use tantivy::schema::Value;
+use tantivy::tokenizer::{Language, LowerCaser, SimpleTokenizer, Stemmer, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument};
 
 use crate::types::{AppError, Movie};
@@ -44,7 +45,7 @@ impl MovieSchema {
         let text_opts = TextOptions::default()
             .set_indexing_options(
                 TextFieldIndexing::default()
-                    .set_tokenizer("default")
+                    .set_tokenizer("russian")
                     .set_index_option(tantivy::schema::IndexRecordOption::WithFreqsAndPositions),
             )
             .set_stored();
@@ -101,6 +102,14 @@ impl SearchIndex {
                     .map_err(|e2| AppError::Index(e2.to_string()))?
             }
         };
+
+        // Register Russian stemmer — must match the tokenizer name used in the schema.
+        // Registration must happen before any indexing or searching.
+        let russian_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
+            .filter(LowerCaser)
+            .filter(Stemmer::new(Language::Russian))
+            .build();
+        index.tokenizers().register("russian", russian_analyzer);
 
         let reader = index
             .reader_builder()

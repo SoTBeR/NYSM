@@ -105,8 +105,25 @@ fn build_user_message(query: &str, movies: &[Movie]) -> String {
         .collect();
 
     let matches = |text: &str| -> bool {
-        let lower = text.to_lowercase();
-        terms.iter().any(|t| lower.contains(t.as_str()))
+        let text_lower = text.to_lowercase();
+        terms.iter().any(|t| {
+            // Exact substring match first
+            if text_lower.contains(t.as_str()) {
+                return true;
+            }
+            // Prefix match: compare first min(6, len) chars of term against each word in text.
+            // Handles Russian inflections: профессия/профессию/профессии all share prefix "профес"
+            let t_prefix = &t[..t.char_indices().nth(6).map(|(i, _)| i).unwrap_or(t.len())];
+            if t_prefix.chars().count() >= 4 {
+                text_lower.split_whitespace().any(|word| {
+                    let w_prefix =
+                        &word[..word.char_indices().nth(6).map(|(i, _)| i).unwrap_or(word.len())];
+                    t_prefix == w_prefix
+                })
+            } else {
+                false
+            }
+        })
     };
 
     let mut msg = format!("Запрос пользователя: {query}\n\nФильмы (ID и совпавшие поля):\n");
@@ -376,5 +393,13 @@ pub async fn ai_rank_movies(
     settings_state: tauri::State<'_, crate::settings::SettingsState>,
 ) -> Result<Vec<RankedMovie>, AppError> {
     let settings = settings_state.load()?;
-    rank_movies_via_api(&user_query, &movies, &settings.ai_api_key, &settings.ai_base_url).await
+    match rank_movies_via_api(&user_query, &movies, &settings.ai_api_key, &settings.ai_base_url)
+        .await
+    {
+        Ok(ranked) => Ok(ranked),
+        Err(e) => {
+            eprintln!("[AI] API unavailable, falling back to local ranking: {e}");
+            Ok(fallback_ranking(&movies))
+        }
+    }
 }
