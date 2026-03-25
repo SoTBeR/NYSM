@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Полная информация о фильме (из SQLite БД / Tantivy индекса)
+/// Полная информация о фильме (из SQLite БД)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Movie {
     pub id: u64,
@@ -14,14 +14,6 @@ pub struct Movie {
     pub director: String,
     /// Отсутствует в текущей БД, зарезервировано для будущего
     pub rating: Option<f32>,
-}
-
-/// Результат поиска из Tantivy — облегчённая версия с оценкой релевантности
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SearchResult {
-    pub movie: Movie,
-    /// Оценка релевантности от Tantivy (выше = лучше)
-    pub score: f32,
 }
 
 /// Отранжированный результат после прохода через AI
@@ -43,32 +35,15 @@ pub struct AppSettings {
     pub ai_base_url: String,
 }
 
-/// Параметры запроса поиска от фронтенда
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-pub struct SearchQuery {
-    pub query: String,
-    /// Максимальное число результатов из Tantivy (до передачи в AI)
-    pub limit: Option<usize>,
-}
-
 /// Унифицированный тип ошибки для команд Tauri
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("Search error: {0}")]
-    Search(String),
-    /// Зарезервировано для будущей реализации AI API
-    #[allow(dead_code)]
     #[error("AI API error: {0}")]
     Ai(String),
     #[error("Settings error: {0}")]
     Settings(String),
-    /// Зарезервировано для будущей реализации PostgreSQL
-    #[allow(dead_code)]
     #[error("Database error: {0}")]
     Database(String),
-    #[error("Index error: {0}")]
-    Index(String),
 }
 
 // Tauri требует, чтобы ошибка команды была сериализуемой в JSON
@@ -91,9 +66,9 @@ mod tests {
 
     #[test]
     fn app_error_serializes_to_string() {
-        let err = AppError::Search("index missing".into());
+        let err = AppError::Ai("request failed".into());
         let json = serde_json::to_string(&err).expect("serialize must not fail");
-        assert_eq!(json, r#""Search error: index missing""#);
+        assert_eq!(json, r#""AI API error: request failed""#);
     }
 
     #[test]
@@ -101,12 +76,6 @@ mod tests {
         let err = AppError::Settings("lock poisoned".into());
         let json = serde_json::to_string(&err).unwrap();
         assert_eq!(json, r#""Settings error: lock poisoned""#);
-    }
-
-    #[test]
-    fn app_error_index_variant() {
-        let err = AppError::Index("not initialised".into());
-        assert!(err.to_string().contains("Index error"));
     }
 
     #[test]

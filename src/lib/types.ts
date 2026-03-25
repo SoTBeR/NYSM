@@ -13,11 +13,6 @@ export interface Movie {
   rating: number | null;
 }
 
-export interface SearchResult {
-  movie: Movie;
-  score: number;
-}
-
 export interface RankedMovie {
   movie: Movie;
   rank: number;

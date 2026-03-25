@@ -167,7 +167,7 @@ pub fn fetch_all_movies_sync(conn: &Connection) -> Result<Vec<Movie>, AppError> 
 // --------------------------------------------------------------------------
 
 /// Возвращает все фильмы из БД.
-/// Вызывается фронтендом для первичной загрузки и индексирования Tantivy.
+/// Вызывается фронтендом для первичной загрузки и AI-ранжирования.
 #[tauri::command]
 pub async fn get_all_movies_from_db(
     state: tauri::State<'_, DbState>,

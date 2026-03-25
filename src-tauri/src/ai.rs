@@ -15,7 +15,7 @@ use crate::types::{AppError, Movie, RankedMovie};
 // --------------------------------------------------------------------------
 
 const DEFAULT_API_BASE: &str = "https://api.gen-api.ru";
-const MODEL: &str = "claude-3.5-haiku-20241022";
+const MODEL: &str = "claude-3-5-haiku-20241022";
 /// Максимум опросов статуса (3 с × 60 = 3 минуты)
 const MAX_POLLS: u32 = 60;
 const POLL_INTERVAL_SECS: u64 = 3;
@@ -41,7 +41,6 @@ struct Message {
 #[serde(rename_all = "lowercase")]
 enum ReasoningEffort {
     Low,
-    Medium,
 }
 
 #[derive(Serialize)]
@@ -58,6 +57,8 @@ struct AiRequest {
 // Типы ответа
 // --------------------------------------------------------------------------
 
+/// Ответ на POST-запрос создания задачи.
+/// request_id — целое число (u64), возвращаемое gen-api.ru.
 #[derive(Deserialize, Debug)]
 struct StartResponse {
     request_id: u64,
@@ -188,6 +189,29 @@ fn fallback_ranking(movies: &[Movie]) -> Vec<RankedMovie> {
 }
 
 // --------------------------------------------------------------------------
+// Вспомогательная функция: десериализация с логированием тела при ошибке
+// --------------------------------------------------------------------------
+
+async fn read_json<T: for<'de> Deserialize<'de>>(
+    response: reqwest::Response,
+    context: &str,
+) -> Result<T, AppError> {
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| AppError::Ai(format!("{context}: не удалось прочитать тело ответа: {e}")))?;
+
+    serde_json::from_slice(&bytes).map_err(|e| {
+        // Try to pretty-print as JSON to decode \uXXXX escapes into readable Unicode
+        let body = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| serde_json::to_string_pretty(&v).ok())
+            .unwrap_or_else(|| String::from_utf8_lossy(&bytes).into_owned());
+        AppError::Ai(format!("{context}: {e}\nТело ответа:\n{body}"))
+    })
+}
+
+// --------------------------------------------------------------------------
 // Основная функция
 // --------------------------------------------------------------------------
 
@@ -236,8 +260,8 @@ pub async fn rank_movies_via_api(
         reasoning_effort: ReasoningEffort::Low,
     };
 
-    let start_url = format!("{base}/api/v1/networks/claude-4");
-    let start_resp = client
+    let start_url = format!("{base}/api/v1/networks/claude");
+    let start_http = client
         .post(&start_url)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
@@ -245,10 +269,10 @@ pub async fn rank_movies_via_api(
         .json(&request_body)
         .send()
         .await
-        .map_err(|e| AppError::Ai(format!("Ошибка отправки запроса: {e}")))?
-        .json::<StartResponse>()
-        .await
-        .map_err(|e| AppError::Ai(format!("Ошибка разбора ответа запуска: {e}")))?;
+        .map_err(|e| AppError::Ai(format!("Ошибка отправки запроса: {e}")))?;
+
+    let start_resp: StartResponse =
+        read_json(start_http, "Ошибка разбора ответа запуска").await?;
 
     let request_id = start_resp.request_id;
     eprintln!("[AI] Request submitted, id={request_id}");
@@ -259,15 +283,15 @@ pub async fn rank_movies_via_api(
     for poll in 1..=MAX_POLLS {
         sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
 
-        let status_resp = client
+        let poll_http = client
             .get(&poll_url)
             .header("Authorization", format!("Bearer {api_key}"))
             .send()
             .await
-            .map_err(|e| AppError::Ai(format!("Ошибка опроса статуса: {e}")))?
-            .json::<StatusResponse>()
-            .await
-            .map_err(|e| AppError::Ai(format!("Ошибка разбора статуса: {e}")))?;
+            .map_err(|e| AppError::Ai(format!("Ошибка опроса статуса: {e}")))?;
+
+        let status_resp: StatusResponse =
+            read_json(poll_http, "Ошибка разбора статуса").await?;
 
         eprintln!("[AI] Poll {poll}/{MAX_POLLS}: status={}", status_resp.status);
 

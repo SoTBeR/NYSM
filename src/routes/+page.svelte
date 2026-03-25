@@ -4,7 +4,7 @@
   import { settingsStore, settingsLoaded } from '$lib/stores/settings';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import MovieCard from '$lib/components/MovieCard.svelte';
-  import type { SearchResult, RankedMovie, AppSettings } from '$lib/types';
+  import type { Movie, RankedMovie, AppSettings } from '$lib/types';
 
   // --- State ---
   let query = $state('');
@@ -39,14 +39,10 @@
     results = [];
 
     try {
-      // Шаг 1: нечёткий поиск в Tantivy
-      const searchResults = await invoke<SearchResult[]>('search_movies', {
-        query: q,
-        limit: 20,
-      });
+      // Шаг 1: загружаем все фильмы из SQLite
+      const movies = await invoke<Movie[]>('get_all_movies_from_db');
 
-      if (searchResults.length === 0) {
-        // Нет результатов — показываем пустой список без AI
+      if (movies.length === 0) {
         searchState = 'done';
         results = [];
         return;
@@ -54,7 +50,6 @@
 
       // Шаг 2: AI ранжирование
       searchState = 'ranking';
-      const movies = searchResults.map((r) => r.movie);
       const ranked = await invoke<RankedMovie[]>('ai_rank_movies', {
         userQuery: q,
         movies,
@@ -86,7 +81,7 @@
   // Анимированный текст статуса
   const statusText: Record<'idle' | 'searching' | 'ranking' | 'done' | 'error', string> = {
     idle: '',
-    searching: 'Ищем в базе фильмов...',
+    searching: 'Загружаем фильмы из базы...',
     ranking: 'Нейросеть анализирует результаты...',
     done: '',
     error: '',

@@ -30,7 +30,7 @@ cd src-tauri && cargo test
 ### Run a single Rust test
 ```bash
 cd src-tauri && cargo test <test_name>
-# e.g. cargo test search_cyrillic_returns_results
+# e.g. cargo test fetch_returns_movies
 ```
 
 ### Build for production
@@ -43,24 +43,23 @@ npm run tauri build
 ### Data flow
 ```
 User query
-  → invoke('search_movies')      — Tantivy full-text search (local index)
-  → invoke('ai_rank_movies')     — AI API re-ranking
-  → RankedMovie[]                — rendered as MovieCard components
+  → invoke('get_all_movies_from_db')  — loads all 14 movies from SQLite
+  → invoke('ai_rank_movies')          — AI API re-ranking
+  → RankedMovie[]                     — rendered as MovieCard components
 ```
 
 On app startup (`lib.rs` `.setup()`):
 1. Settings are read from `tauri-plugin-store` (`nysm_settings.json`) into `SettingsState` in-memory cache.
-2. Tantivy index is opened/created in `{app_data_dir}/nysm_index/`.
+2. SQLite DB is opened into `DbState`.
 
 ### Rust backend (`src-tauri/src/`)
 
 | File | Role |
 |---|---|
 | `lib.rs` | App entry: plugin registration, state management, command handler registration, startup hooks |
-| `types.rs` | Shared structs: `Movie`, `SearchResult`, `RankedMovie`, `AppSettings`, `AppError` |
-| `search.rs` | Tantivy integration: `SearchState` (Mutex-wrapped index), `fuzzy_search()`, `init_index()`, Tauri commands |
-| `ai.rs` | **STUB** — AI ranking placeholder. Replace `rank_movies()` when API code arrives |
-| `db.rs` | **STUB** — `MovieRepository` trait + `MockMovieRepository` (5 sample films). `PostgresMovieRepository` is a skeleton awaiting credentials |
+| `types.rs` | Shared structs: `Movie`, `RankedMovie`, `AppSettings`, `AppError` |
+| `ai.rs` | AI ranking via gen-api.ru — async POST/poll flow, raw body logging on parse errors |
+| `db.rs` | SQLite integration: `DbState` (Mutex-wrapped connection), `fetch_all_movies_sync()`, `get_all_movies_from_db` Tauri command |
 | `settings.rs` | `SettingsState` in-memory cache + `tauri-plugin-store` read/write for `AppSettings` |
 
 ### Frontend (`src/`)
@@ -80,13 +79,10 @@ All commands use snake_case. Tauri auto-converts camelCase JS object keys to sna
 
 | Command | Rust handler | Notes |
 |---|---|---|
-| `search_movies` | `search::search_movies` | `{ query, limit? }` → `SearchResult[]` |
 | `ai_rank_movies` | `ai::ai_rank_movies` | `{ userQuery, movies }` → `RankedMovie[]` |
 | `save_settings` | `settings::save_settings` | `{ settings }` → writes store + updates cache |
 | `load_settings` | `settings::load_settings` | reads store, updates cache → `AppSettings` |
-| `get_all_movies_from_db` | `db::get_all_movies_from_db` | currently uses `MockMovieRepository` |
-| `index_movies` | `search::index_movies` | `{ movies, clearFirst? }` → indexes into Tantivy |
-| `rebuild_index` | `search::rebuild_index` | clears index, re-indexes all movies |
+| `get_all_movies_from_db` | `db::get_all_movies_from_db` | returns all movies from SQLite → `Movie[]` |
 
 ### Design system
 Defined entirely in `src/app.css` via CSS custom properties. Key variable families:
@@ -98,14 +94,14 @@ Defined entirely in `src/app.css` via CSS custom properties. Key variable famili
 
 ## Key Implementation Notes
 
-### Cyrillic search
-`FuzzyTermQuery` is intentionally absent — it computes Levenshtein distance over raw UTF-8 bytes, making it unable to match Cyrillic characters (2 bytes each). `QueryParser` is used instead, which tokenizes and matches Cyrillic correctly. "Fuzzy" ranking is delegated to the AI layer.
-
-### Tantivy reader reload
-`idx.reader.reload()` is called explicitly after every `writer.commit()`. Without this, `OnCommitWithDelay` polling causes a race condition where newly indexed documents are invisible to the searcher for up to 500 ms.
+### Search approach
+Tantivy was removed — with only 14 films the dataset is trivially small. The frontend calls `get_all_movies_from_db` to fetch all movies, then passes them directly to `ai_rank_movies`. Relevance ranking is handled entirely by the AI layer.
 
 ### Settings flow
 `SettingsState` is an in-memory Mutex cache populated at startup and on every `load_settings`/`save_settings` call. The AI module reads settings via `settings_state.load()` — it does not access the store directly.
+
+### AI API error debugging
+`ai.rs` reads the raw response bytes before attempting JSON deserialization. On parse failure it logs both the serde error and the full response body to stderr, making it straightforward to diagnose schema mismatches.
 
 ## Pending
 
@@ -121,7 +117,8 @@ Defined entirely in `src/app.css` via CSS custom properties. Key variable famili
 
 ## AI API (gen-api.ru)
 
-- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/claude-4` → `{request_id}`
+- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/claude-4` → `{request_id}` (string UUID)
 - Polling: `GET https://api.gen-api.ru/api/v1/request/get/{request_id}` every 3s, max 60 polls
-- Model: `claude-opus-4-5`, `reasoning_effort: low`, `max_tokens: 2000`
+- Model: configured via `MODEL` constant in `ai.rs`, `reasoning_effort: low`, `max_tokens: 2000`
 - Response: JSON array `[{movie_id, rank, reason}]` — parsed in `parse_response()` with fallback to original order on parse error
+- `request_id` is a **string UUID**, not an integer — the `StartResponse` struct uses `String`

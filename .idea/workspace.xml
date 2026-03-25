@@ -19,11 +19,8 @@
       <change beforePath="$PROJECT_DIR$/src-tauri/src/ai.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/ai.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/db.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/db.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src-tauri/src/search.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/search.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/src/search.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/types.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/types.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src-tauri/tauri.conf.json" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/tauri.conf.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/MovieCard.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/MovieCard.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/SettingsModal.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/SettingsModal.svelte" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/types.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/routes/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/+page.svelte" afterDir="false" />
     </list>
@@ -135,7 +132,7 @@
       <updated>1774298129949</updated>
       <workItem from="1774298130974" duration="1898000" />
       <workItem from="1774300061500" duration="832000" />
-      <workItem from="1774452864793" duration="9935000" />
+      <workItem from="1774452864793" duration="11343000" />
     </task>
     <servers />
   </component>
