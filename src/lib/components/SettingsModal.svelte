@@ -213,11 +213,11 @@
   /* ---- Panel ---- */
   .modal-panel {
     background: var(--bg-modal);
-    border: 1px solid var(--border-medium);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-xl);
     width: 420px;
     max-width: calc(100vw - var(--space-8));
-    box-shadow: var(--shadow-xl);
+    box-shadow: var(--shadow-xl), 0 0 40px rgba(180, 20, 20, 0.2);
     animation: modalAppear var(--transition-appear) both;
     overflow: hidden;
   }
@@ -241,8 +241,9 @@
   }
 
   .title-star {
-    color: var(--red-600);
+    color: var(--red-500);
     font-size: 18px;
+    filter: drop-shadow(0 0 6px rgba(204, 26, 26, 0.7));
   }
 
   .modal-close {
@@ -255,7 +256,7 @@
   /* ---- Divider ---- */
   .modal-divider {
     height: 1px;
-    background: var(--border-subtle);
+    background: linear-gradient(90deg, transparent, var(--red-800), transparent);
     margin: 0 var(--space-6);
   }
 
@@ -277,7 +278,7 @@
   .field-label {
     font-size: var(--text-sm);
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     letter-spacing: 0.01em;
   }
 
@@ -360,7 +361,7 @@
     justify-content: flex-end;
     gap: var(--space-3);
     padding: var(--space-5) var(--space-6);
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--border-medium);
   }
 
   /* ---- Saving dots ---- */

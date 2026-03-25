@@ -1,74 +1,309 @@
-//! AI API интеграция для ранжирования фильмов
+//! Интеграция с AI API (gen-api.ru) для ранжирования фильмов.
 //!
-//! СТАТУС: заглушка (placeholder).
-//! Реальный код для нейросетевого агрегатора будет добавлен позже,
-//! когда будут предоставлены API ключ и документация.
-//!
-//! Текущее поведение:
-//! - Принимает запрос пользователя + список фильмов из Tantivy
-//! - Возвращает те же фильмы с рангами по порядку (без реального AI ранжирования)
-//! - Логирует что был вызван stub
+//! Провайдер работает асинхронно: сначала POST-запрос создаёт задачу
+//! и возвращает `request_id`, затем нужно опрашивать GET-эндпоинт
+//! пока статус не станет "success", "failed" или другим терминальным.
+
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use tokio::time::{sleep, Duration};
 
 use crate::types::{AppError, Movie, RankedMovie};
 
-/// Запрос к AI API
-#[derive(Debug)]
-pub struct AiRankRequest {
-    pub user_query: String,
-    pub movies: Vec<Movie>,
+// --------------------------------------------------------------------------
+// Константы
+// --------------------------------------------------------------------------
+
+const DEFAULT_API_BASE: &str = "https://api.gen-api.ru";
+const MODEL: &str = "claude-3.5-haiku-20241022";
+/// Максимум опросов статуса (3 с × 60 = 3 минуты)
+const MAX_POLLS: u32 = 60;
+const POLL_INTERVAL_SECS: u64 = 3;
+
+// --------------------------------------------------------------------------
+// Типы запроса (сериализация в JSON для gen-api.ru)
+// --------------------------------------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+enum MessageRole {
+    System,
+    User,
 }
 
-/// Ответ AI API (внутренний формат перед маппингом в RankedMovie)
-#[derive(Debug)]
-pub struct AiRankResponse {
-    pub ranked: Vec<RankedMovie>,
+#[derive(Serialize)]
+struct Message {
+    role: MessageRole,
+    content: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ReasoningEffort {
+    Low,
+    Medium,
+}
+
+#[derive(Serialize)]
+struct AiRequest {
+    model: String,
+    messages: Vec<Message>,
+    max_tokens: u32,
+    is_sync: bool,
+    stream: bool,
+    reasoning_effort: ReasoningEffort,
 }
 
 // --------------------------------------------------------------------------
-// AI клиент (placeholder — будет заменён на реальную реализацию)
+// Типы ответа
 // --------------------------------------------------------------------------
 
-/// Отправляет запрос к AI API и возвращает отранжированные фильмы.
-///
-/// # Placeholder behaviour
-/// Пока реальный API не подключён, функция возвращает фильмы в исходном порядке
-/// (как пришли из Tantivy), присваивая им последовательные ранги.
-///
-/// # TODO: реальная реализация
-/// 1. Сформировать промпт с описаниями фильмов и запросом пользователя
-/// 2. POST на `{base_url}/chat/completions` (или аналог агрегатора)
-/// 3. Разобрать ответ: ожидаем JSON-массив с id фильмов в порядке релевантности
-/// 4. Сопоставить id с входными фильмами и вернуть RankedMovie
-pub async fn rank_movies(
-    request: AiRankRequest,
-    _api_key: &str,
-    _base_url: &str,
-) -> Result<AiRankResponse, AppError> {
-    // --- STUB START ---
-    // Просто возвращаем фильмы в том порядке, в котором они пришли
-    eprintln!(
-        "[AI STUB] rank_movies called: query='{}', {} films",
-        request.user_query,
-        request.movies.len()
-    );
+#[derive(Deserialize, Debug)]
+struct StartResponse {
+    request_id: u64,
+}
 
-    let ranked = request
-        .movies
+#[derive(Deserialize, Debug)]
+struct MessageContent {
+    content: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Choice {
+    message: MessageContent,
+}
+
+#[derive(Deserialize, Debug)]
+struct ResultItem {
+    choices: Vec<Choice>,
+}
+
+#[derive(Deserialize, Debug)]
+struct StatusResponse {
+    status: String,
+    result: Option<Vec<ResultItem>>,
+}
+
+// --------------------------------------------------------------------------
+// Промпты
+// --------------------------------------------------------------------------
+
+const SYSTEM_PROMPT: &str = "\
+Ты — эксперт по советскому и российскому кино. \
+Тебе дан список фильмов с информацией о них и поисковый запрос пользователя. \
+Твоя задача: выбрать фильмы, которые подходят под запрос, и отранжировать их по убыванию релевантности.
+
+Верни ТОЛЬКО валидный JSON-массив без какого-либо текста до или после него. \
+Ни один фильм не должен встречаться дважды. \
+Формат каждого объекта:
+{\"movie_id\": <целое число>, \"rank\": <позиция начиная с 1>, \"reason\": \"<1-2 предложения на русском>\"}
+
+Если ни один фильм не подходит, верни пустой массив: []";
+
+/// Формирует текст сообщения пользователя: запрос + список фильмов.
+fn build_user_message(query: &str, movies: &[Movie]) -> String {
+    let mut msg = format!("Запрос пользователя: {query}\n\nСписок фильмов:\n");
+    for m in movies {
+        msg.push_str(&format!(
+            "\nID: {}\nНазвание: {}\nГод: {}\nДлительность: {} мин\nРежиссёр: {}\nЖанры: {}\nСтудия: {}\nАктёры: {}\nОписание: {}\n---",
+            m.id,
+            m.title,
+            if m.year > 0 { m.year.to_string() } else { "неизвестен".into() },
+            m.duration_minutes.map(|d| d.to_string()).unwrap_or_else(|| "—".into()),
+            if m.director.is_empty() { "неизвестен" } else { &m.director },
+            if m.genres.is_empty() { "не указаны".into() } else { m.genres.join(", ") },
+            if m.studios.is_empty() { "не указана".into() } else { m.studios.join(", ") },
+            if m.actors.is_empty() { "не указаны".into() } else { m.actors.join(", ") },
+            if m.description.is_empty() { "—" } else { &m.description },
+        ));
+    }
+    msg
+}
+
+// --------------------------------------------------------------------------
+// Парсинг ответа AI
+// --------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct AiRankedItem {
+    movie_id: u64,
+    rank: u32,
+    reason: String,
+}
+
+/// Парсит JSON-ответ от AI и сопоставляет `movie_id` с входными фильмами.
+/// При ошибке парсинга возвращает фильмы в исходном порядке (fallback).
+fn parse_response(raw: &str, movies: &[Movie]) -> Vec<RankedMovie> {
+    // AI иногда оборачивает JSON в блок кода ```json ... ```
+    let json_str = {
+        let trimmed = raw.trim();
+        if let Some(inner) = trimmed
+            .strip_prefix("```json")
+            .or_else(|| trimmed.strip_prefix("```"))
+        {
+            inner.trim_end_matches("```").trim()
+        } else {
+            trimmed
+        }
+    };
+
+    let items: Vec<AiRankedItem> = match serde_json::from_str(json_str) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[AI] Failed to parse response JSON: {e}\nRaw: {raw}");
+            return fallback_ranking(movies);
+        }
+    };
+
+    // Строим map id → Movie для быстрого поиска
+    let movie_map: std::collections::HashMap<u64, &Movie> =
+        movies.iter().map(|m| (m.id, m)).collect();
+
+    let mut ranked: Vec<RankedMovie> = items
         .into_iter()
-        .enumerate()
-        .map(|(i, movie)| RankedMovie {
-            movie,
-            rank: (i + 1) as u32,
-            reason: String::new(), // AI объяснение будет здесь
+        .filter_map(|item| {
+            movie_map.get(&item.movie_id).map(|&m| RankedMovie {
+                movie: m.clone(),
+                rank: item.rank,
+                reason: item.reason,
+            })
         })
         .collect();
 
-    Ok(AiRankResponse { ranked })
-    // --- STUB END ---
+    // Сортируем по рангу на случай если AI вернул их не по порядку
+    ranked.sort_by_key(|r| r.rank);
+    ranked
+}
+
+fn fallback_ranking(movies: &[Movie]) -> Vec<RankedMovie> {
+    movies
+        .iter()
+        .enumerate()
+        .map(|(i, m)| RankedMovie {
+            movie: m.clone(),
+            rank: (i + 1) as u32,
+            reason: String::new(),
+        })
+        .collect()
 }
 
 // --------------------------------------------------------------------------
-// Tauri команды
+// Основная функция
+// --------------------------------------------------------------------------
+
+/// Отправляет запрос к gen-api.ru и возвращает отранжированные фильмы.
+///
+/// Поток:
+/// 1. POST `/api/v1/networks/claude-4` → `{ request_id }`
+/// 2. Цикл GET `/api/v1/request/get/{request_id}` каждые 3 с
+/// 3. При статусе "success" — парсим ответ и возвращаем `Vec<RankedMovie>`
+pub async fn rank_movies_via_api(
+    user_query: &str,
+    movies: &[Movie],
+    api_key: &str,
+    base_url: &str,
+) -> Result<Vec<RankedMovie>, AppError> {
+    if api_key.is_empty() {
+        return Err(AppError::Ai(
+            "API ключ не задан. Укажите его в настройках приложения.".into(),
+        ));
+    }
+
+    let base = if base_url.is_empty() {
+        DEFAULT_API_BASE
+    } else {
+        base_url.trim_end_matches('/')
+    };
+
+    let client = Client::new();
+
+    // --- Шаг 1: отправить задачу ---
+    let request_body = AiRequest {
+        model: MODEL.to_string(),
+        messages: vec![
+            Message {
+                role: MessageRole::System,
+                content: SYSTEM_PROMPT.to_string(),
+            },
+            Message {
+                role: MessageRole::User,
+                content: build_user_message(user_query, movies),
+            },
+        ],
+        max_tokens: 2000,
+        is_sync: false,
+        stream: false,
+        reasoning_effort: ReasoningEffort::Low,
+    };
+
+    let start_url = format!("{base}/api/v1/networks/claude-4");
+    let start_resp = client
+        .post(&start_url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .header("Authorization", format!("Bearer {api_key}"))
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| AppError::Ai(format!("Ошибка отправки запроса: {e}")))?
+        .json::<StartResponse>()
+        .await
+        .map_err(|e| AppError::Ai(format!("Ошибка разбора ответа запуска: {e}")))?;
+
+    let request_id = start_resp.request_id;
+    eprintln!("[AI] Request submitted, id={request_id}");
+
+    // --- Шаг 2: опрашиваем статус ---
+    let poll_url = format!("{base}/api/v1/request/get/{request_id}");
+
+    for poll in 1..=MAX_POLLS {
+        sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
+
+        let status_resp = client
+            .get(&poll_url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .send()
+            .await
+            .map_err(|e| AppError::Ai(format!("Ошибка опроса статуса: {e}")))?
+            .json::<StatusResponse>()
+            .await
+            .map_err(|e| AppError::Ai(format!("Ошибка разбора статуса: {e}")))?;
+
+        eprintln!("[AI] Poll {poll}/{MAX_POLLS}: status={}", status_resp.status);
+
+        match status_resp.status.as_str() {
+            "processing" | "queued" | "pending" => {
+                // продолжаем ждать
+            }
+            "success" => {
+                let raw_content = status_resp
+                    .result
+                    .and_then(|r| r.into_iter().next())
+                    .and_then(|item| item.choices.into_iter().next())
+                    .map(|c| c.message.content)
+                    .unwrap_or_default();
+
+                eprintln!("[AI] Success. Parsing response...");
+                return Ok(parse_response(&raw_content, movies));
+            }
+            "failed" | "error" => {
+                return Err(AppError::Ai(format!(
+                    "Задача {request_id} завершилась ошибкой на сервере AI"
+                )));
+            }
+            unknown => {
+                return Err(AppError::Ai(format!("Неизвестный статус: {unknown}")));
+            }
+        }
+    }
+
+    Err(AppError::Ai(format!(
+        "Превышено время ожидания ответа AI (задача {request_id})"
+    )))
+}
+
+// --------------------------------------------------------------------------
+// Tauri команда
 // --------------------------------------------------------------------------
 
 #[tauri::command]
@@ -78,10 +313,5 @@ pub async fn ai_rank_movies(
     settings_state: tauri::State<'_, crate::settings::SettingsState>,
 ) -> Result<Vec<RankedMovie>, AppError> {
     let settings = settings_state.load()?;
-
-    let request = AiRankRequest { user_query, movies };
-
-    let response = rank_movies(request, &settings.ai_api_key, &settings.ai_base_url).await?;
-
-    Ok(response.ranked)
+    rank_movies_via_api(&user_query, &movies, &settings.ai_api_key, &settings.ai_base_url).await
 }

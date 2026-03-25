@@ -94,15 +94,24 @@
 </script>
 
 <!-- ============================================================
-     Background decorations (snowflakes)
+     Background decorations
      ============================================================ -->
 <div class="bg-decorations" aria-hidden="true">
+  <!-- Статичные угловые снежинки (атмосфера) -->
   <span class="snowflake snowflake-1">❄</span>
   <span class="snowflake snowflake-2">❄</span>
   <span class="snowflake snowflake-3">❅</span>
   <span class="snowflake snowflake-4">❆</span>
   <span class="snowflake snowflake-5">❄</span>
   <span class="snowflake snowflake-6">❅</span>
+
+  <!-- Падающие снежинки (6 штук, стаггер через отрицательный delay) -->
+  <span class="fall sf-1">❄</span>
+  <span class="fall sf-2">❅</span>
+  <span class="fall sf-3">❆</span>
+  <span class="fall sf-4">❄</span>
+  <span class="fall sf-5">❅</span>
+  <span class="fall sf-6">❆</span>
 </div>
 
 <!-- ============================================================
@@ -318,6 +327,42 @@
   .snowflake-4 { top: 45%; right: 4%;  font-size: 40px; opacity: 0.12; }
   .snowflake-5 { bottom: 20%; left: 10%;  font-size: 60px; opacity: 0.09; }
   .snowflake-6 { bottom: 15%; right: 7%;  font-size: 44px; opacity: 0.10; }
+
+  /* ============================================================
+     Falling snowflakes
+     ============================================================ */
+
+  /*
+   * Снежинка падает от -60px до 110vh с лёгким горизонтальным дрейфом.
+   * Opacity: появляется плавно в начале, тает в конце.
+   * Отрицательные animation-delay запускают каждую снежинку
+   * в середине цикла → в первый же момент на экране 2-3 штуки,
+   * а не 0 или сразу 6.
+   */
+  @keyframes snowfall {
+    0%   { transform: translateY(-60px) translateX(0)    rotate(0deg);   opacity: 0; }
+    6%   { opacity: 1; }
+    50%  { transform: translateY(50vh)  translateX(18px)  rotate(120deg); }
+    88%  { opacity: 0.8; }
+    100% { transform: translateY(110vh) translateX(-8px)  rotate(240deg); opacity: 0; }
+  }
+
+  .fall {
+    position: absolute;
+    pointer-events: none;
+    user-select: none;
+    color: #fff;
+    animation: snowfall linear infinite;
+    will-change: transform, opacity;
+  }
+
+  /* Каждая снежинка: уникальная позиция, размер, скорость и сдвиг фазы */
+  .sf-1 { left: 7%;   font-size: 20px; animation-duration: 13s; animation-delay:  -3s;  opacity: 0; }
+  .sf-2 { left: 23%;  font-size: 14px; animation-duration: 17s; animation-delay:  -8s;  opacity: 0; }
+  .sf-3 { left: 44%;  font-size: 22px; animation-duration: 11s; animation-delay:  -5s;  opacity: 0; }
+  .sf-4 { left: 62%;  font-size: 16px; animation-duration: 15s; animation-delay: -12s;  opacity: 0; }
+  .sf-5 { left: 79%;  font-size: 18px; animation-duration: 12s; animation-delay:  -1s;  opacity: 0; }
+  .sf-6 { left: 91%;  font-size: 13px; animation-duration: 16s; animation-delay:  -9s;  opacity: 0; }
 
   /* ============================================================
      Topbar

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Полная информация о фильме (из БД / индекса)
+/// Полная информация о фильме (из SQLite БД / Tantivy индекса)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Movie {
     pub id: u64,
@@ -8,10 +8,12 @@ pub struct Movie {
     pub description: String,
     pub actors: Vec<String>,
     pub genres: Vec<String>,
+    pub studios: Vec<String>,
     pub year: u32,
+    pub duration_minutes: Option<u32>,
     pub director: String,
-    pub rating: f32,
-    pub poster_url: Option<String>,
+    /// Отсутствует в текущей БД, зарезервировано для будущего
+    pub rating: Option<f32>,
 }
 
 /// Результат поиска из Tantivy — облегчённая версия с оценкой релевантности
@@ -134,16 +136,17 @@ mod tests {
             description: "Описание".into(),
             actors: vec!["Актёр 1".into(), "Актёр 2".into()],
             genres: vec!["Комедия".into()],
+            studios: vec!["Мосфильм".into()],
             year: 1970,
+            duration_minutes: Some(95),
             director: "Режиссёр".into(),
-            rating: 7.5,
-            poster_url: None,
+            rating: None,
         };
         let json = serde_json::to_string(&m).unwrap();
         let restored: Movie = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.id, 42);
         assert_eq!(restored.actors.len(), 2);
-        assert!(restored.poster_url.is_none());
+        assert_eq!(restored.duration_minutes, Some(95));
     }
 
     #[test]
@@ -155,10 +158,11 @@ mod tests {
                 description: String::new(),
                 actors: vec![],
                 genres: vec![],
+                studios: vec![],
                 year: 1975,
+                duration_minutes: Some(184),
                 director: "Рязанов".into(),
-                rating: 8.8,
-                poster_url: None,
+                rating: None,
             },
             rank: 1,
             reason: "Классика".into(),

@@ -1,203 +1,189 @@
-//! Модуль для работы с PostgreSQL базой данных
+//! Модуль доступа к SQLite базе данных фильмов.
 //!
-//! СТАТУС: заглушка (placeholder).
-//! Детали подключения к PostgreSQL будут предоставлены позже.
+//! БД bundled внутри приложения: `src-tauri/assets/movies_database.db`.
+//! В production читается из `$RESOURCE_DIR/movies_database.db`.
+//! В режиме разработки — из `$CARGO_MANIFEST_DIR/assets/movies_database.db`.
 //!
-//! Архитектура:
-//! - Трейт `MovieRepository` определяет интерфейс для получения фильмов
-//! - `PostgresMovieRepository` — реальная реализация (TODO)
-//! - `MockMovieRepository` — тестовая реализация с предзаполненными данными
+//! Схема (упрощённо):
+//!   movies(movie_id, title, description, release_year, duration_minutes)
+//!   actors, directors, genres, studios — справочники
+//!   movie_actors, movie_directors, movie_genres, movie_studios — связи M:N
+
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use rusqlite::Connection;
+use tauri::Manager;
 
 use crate::types::{AppError, Movie};
 
 // --------------------------------------------------------------------------
-// Трейт репозитория
+// State
 // --------------------------------------------------------------------------
 
-/// Абстракция доступа к данным фильмов.
-/// Позволяет легко подменить реализацию (Postgres → mock → другая БД).
-#[async_trait::async_trait]
-#[allow(dead_code)]
-pub trait MovieRepository: Send + Sync {
-    /// Возвращает все фильмы из источника данных
-    async fn get_all_movies(&self) -> Result<Vec<Movie>, AppError>;
+pub struct DbState(pub Mutex<Option<Connection>>);
 
-    /// Возвращает фильм по ID
-    async fn get_movie_by_id(&self, id: u64) -> Result<Option<Movie>, AppError>;
-
-    /// Возвращает список фильмов по набору ID
-    async fn get_movies_by_ids(&self, ids: &[u64]) -> Result<Vec<Movie>, AppError>;
-}
-
-// --------------------------------------------------------------------------
-// PostgreSQL реализация (TODO)
-// --------------------------------------------------------------------------
-
-/// PostgreSQL реализация репозитория.
-///
-/// # TODO: реализация
-/// 1. Добавить зависимость `sqlx` или `tokio-postgres` в Cargo.toml
-/// 2. Заполнить поля `connection_string` из конфига/переменных окружения
-/// 3. Реализовать методы трейта с реальными SQL запросами:
-///    ```sql
-///    SELECT id, title, description, actors, genres, year, director, rating, poster_url
-///    FROM movies
-///    ORDER BY year DESC;
-///    ```
-#[allow(dead_code)]
-pub struct PostgresMovieRepository {
-    // TODO: connection_string: String,
-    // TODO: pool: sqlx::PgPool,
-}
-
-#[allow(dead_code)]
-impl PostgresMovieRepository {
-    /// Создаёт новый экземпляр репозитория.
-    ///
-    /// # TODO
-    /// Принять connection_string и создать пул соединений через sqlx::PgPool::connect()
-    pub async fn new(_connection_string: &str) -> Result<Self, AppError> {
-        // TODO: реальное подключение
-        Err(AppError::Database(
-            "PostgreSQL not yet configured. Provide connection string.".into(),
-        ))
-    }
-}
-
-#[async_trait::async_trait]
-impl MovieRepository for PostgresMovieRepository {
-    async fn get_all_movies(&self) -> Result<Vec<Movie>, AppError> {
-        Err(AppError::Database("PostgreSQL not yet implemented".into()))
-    }
-
-    async fn get_movie_by_id(&self, _id: u64) -> Result<Option<Movie>, AppError> {
-        Err(AppError::Database("PostgreSQL not yet implemented".into()))
-    }
-
-    async fn get_movies_by_ids(&self, _ids: &[u64]) -> Result<Vec<Movie>, AppError> {
-        Err(AppError::Database("PostgreSQL not yet implemented".into()))
-    }
-}
-
-// --------------------------------------------------------------------------
-// Mock реализация с тестовыми данными
-// --------------------------------------------------------------------------
-
-/// Тестовый репозиторий с несколькими советскими новогодними фильмами.
-/// Используется пока PostgreSQL не подключён.
-pub struct MockMovieRepository;
-
-impl MockMovieRepository {
+impl DbState {
     pub fn new() -> Self {
-        MockMovieRepository
-    }
-
-    fn sample_movies() -> Vec<Movie> {
-        vec![
-            Movie {
-                id: 1,
-                title: "Ирония судьбы, или С лёгким паром!".to_string(),
-                description: "Новогодняя история о том, как москвич по ошибке оказался в Ленинграде и встретил там свою любовь.".to_string(),
-                actors: vec![
-                    "Андрей Мягков".to_string(),
-                    "Барбара Брыльска".to_string(),
-                    "Юрий Яковлев".to_string(),
-                ],
-                genres: vec!["Комедия".to_string(), "Мелодрама".to_string()],
-                year: 1975,
-                director: "Эльдар Рязанов".to_string(),
-                rating: 8.8,
-                poster_url: None,
-            },
-            Movie {
-                id: 2,
-                title: "Карнавальная ночь".to_string(),
-                description: "Молодые сотрудники Дома культуры хотят провести весёлый новогодний карнавал, но им мешает новый директор-бюрократ.".to_string(),
-                actors: vec![
-                    "Людмила Гурченко".to_string(),
-                    "Игорь Ильинский".to_string(),
-                ],
-                genres: vec!["Комедия".to_string(), "Музыкальный".to_string()],
-                year: 1956,
-                director: "Эльдар Рязанов".to_string(),
-                rating: 8.2,
-                poster_url: None,
-            },
-            Movie {
-                id: 3,
-                title: "Морозко".to_string(),
-                description: "Волшебная сказка о доброй Настеньке и Морозко — добром волшебнике зимнего леса.".to_string(),
-                actors: vec![
-                    "Наталья Седых".to_string(),
-                    "Александр Хвыля".to_string(),
-                    "Эдуард Изотов".to_string(),
-                ],
-                genres: vec!["Сказка".to_string(), "Семейный".to_string()],
-                year: 1964,
-                director: "Александр Роу".to_string(),
-                rating: 8.0,
-                poster_url: None,
-            },
-            Movie {
-                id: 4,
-                title: "Чародеи".to_string(),
-                description: "Молодой учёный приезжает в научный институт, где работают настоящие волшебники, чтобы спасти свою невесту от злых чар.".to_string(),
-                actors: vec![
-                    "Александр Абдулов".to_string(),
-                    "Семён Фарада".to_string(),
-                    "Эммануил Виторган".to_string(),
-                ],
-                genres: vec!["Комедия".to_string(), "Фэнтези".to_string(), "Музыкальный".to_string()],
-                year: 1982,
-                director: "Константин Бромберг".to_string(),
-                rating: 7.9,
-                poster_url: None,
-            },
-            Movie {
-                id: 5,
-                title: "Новогодние приключения Маши и Вити".to_string(),
-                description: "Дети Маша и Витя отправляются в сказочный лес, чтобы помочь Деду Морозу спасти Снегурочку от Кощея Бессмертного.".to_string(),
-                actors: vec![
-                    "Наташа Богунова".to_string(),
-                    "Игорь Клименков".to_string(),
-                ],
-                genres: vec!["Сказка".to_string(), "Детский".to_string(), "Музыкальный".to_string()],
-                year: 1975,
-                director: "Игорь Усов".to_string(),
-                rating: 7.7,
-                poster_url: None,
-            },
-        ]
+        DbState(Mutex::new(None))
     }
 }
 
-#[async_trait::async_trait]
-impl MovieRepository for MockMovieRepository {
-    async fn get_all_movies(&self) -> Result<Vec<Movie>, AppError> {
-        Ok(Self::sample_movies())
+// --------------------------------------------------------------------------
+// Инициализация
+// --------------------------------------------------------------------------
+
+/// Открывает соединение с БД по пути `db_path`.
+/// Включает foreign keys и WAL-режим для безопасного параллельного чтения.
+pub fn init_db(state: &DbState, db_path: PathBuf) -> Result<(), AppError> {
+    if !db_path.exists() {
+        return Err(AppError::Database(format!(
+            "DB file not found: {}",
+            db_path.display()
+        )));
     }
 
-    async fn get_movie_by_id(&self, id: u64) -> Result<Option<Movie>, AppError> {
-        Ok(Self::sample_movies().into_iter().find(|m| m.id == id))
-    }
+    let conn = Connection::open(&db_path)
+        .map_err(|e| AppError::Database(format!("Cannot open DB at {}: {e}", db_path.display())))?;
 
-    async fn get_movies_by_ids(&self, ids: &[u64]) -> Result<Vec<Movie>, AppError> {
-        Ok(Self::sample_movies()
-            .into_iter()
-            .filter(|m| ids.contains(&m.id))
-            .collect())
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;",
+    )
+    .map_err(|e| AppError::Database(format!("PRAGMA error: {e}")))?;
+
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| AppError::Database("Lock poisoned".into()))?;
+    *guard = Some(conn);
+    Ok(())
+}
+
+/// Возвращает путь к файлу БД.
+/// В dev-сборке (`debug_assertions`) — из директории cargo-проекта.
+/// В release — из bundled ресурсов Tauri.
+pub fn resolve_db_path(app: &tauri::AppHandle) -> PathBuf {
+    if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join("movies_database.db")
+    } else {
+        app.path()
+            .resource_dir()
+            .expect("Cannot resolve resource dir")
+            .join("movies_database.db")
     }
+}
+
+// --------------------------------------------------------------------------
+// Вспомогательная функция
+// --------------------------------------------------------------------------
+
+/// Разбивает строку `"a, b, c"` (результат GROUP_CONCAT) в `Vec<String>`.
+fn csv_to_vec(s: Option<String>) -> Vec<String> {
+    s.unwrap_or_default()
+        .split(',')
+        .map(|x| x.trim().to_string())
+        .filter(|x| !x.is_empty())
+        .collect()
+}
+
+// --------------------------------------------------------------------------
+// Основной запрос
+// --------------------------------------------------------------------------
+
+/// Загружает все фильмы из БД одним запросом с GROUP_CONCAT для связанных данных.
+///
+/// Использует GROUP BY + GROUP_CONCAT чтобы избежать дублирования строк при JOIN.
+pub fn fetch_all_movies_sync(conn: &Connection) -> Result<Vec<Movie>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT
+                m.movie_id,
+                m.title,
+                COALESCE(m.description, '')            AS description,
+                m.release_year,
+                m.duration_minutes,
+                GROUP_CONCAT(DISTINCT TRIM(d.director_name)) AS directors,
+                GROUP_CONCAT(DISTINCT TRIM(a.actor_name))    AS actors,
+                GROUP_CONCAT(DISTINCT TRIM(g.genre_name))    AS genres,
+                GROUP_CONCAT(DISTINCT TRIM(s.studio_name))   AS studios
+            FROM movies m
+            LEFT JOIN movie_directors md ON m.movie_id = md.movie_id
+            LEFT JOIN directors d        ON md.director_id = d.director_id
+            LEFT JOIN movie_actors   ma  ON m.movie_id = ma.movie_id
+            LEFT JOIN actors a           ON ma.actor_id = a.actor_id
+            LEFT JOIN movie_genres   mg  ON m.movie_id = mg.movie_id
+            LEFT JOIN genres g           ON mg.genre_id = g.genre_id
+            LEFT JOIN movie_studios  ms  ON m.movie_id = ms.movie_id
+            LEFT JOIN studios s          ON ms.studio_id = s.studio_id
+            GROUP BY m.movie_id
+            ORDER BY m.release_year ASC
+            "#,
+        )
+        .map_err(|e| AppError::Database(format!("Prepare error: {e}")))?;
+
+    let movies = stmt
+        .query_map([], |row| {
+            let directors_csv: Option<String> = row.get(5)?;
+            let actors_csv: Option<String> = row.get(6)?;
+            let genres_csv: Option<String> = row.get(7)?;
+            let studios_csv: Option<String> = row.get(8)?;
+
+            // Берём первого режиссёра как основного
+            let directors = csv_to_vec(directors_csv);
+            let director = directors.first().cloned().unwrap_or_default();
+
+            Ok(Movie {
+                id: row.get::<_, i64>(0)? as u64,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                year: row
+                    .get::<_, Option<i32>>(3)?
+                    .unwrap_or(0)
+                    .max(0) as u32,
+                duration_minutes: row
+                    .get::<_, Option<i32>>(4)?
+                    .map(|v| v.max(0) as u32),
+                director,
+                actors: csv_to_vec(actors_csv),
+                genres: csv_to_vec(genres_csv),
+                studios: csv_to_vec(studios_csv),
+                rating: None,
+            })
+        })
+        .map_err(|e| AppError::Database(format!("Query error: {e}")))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::Database(format!("Row error: {e}")))?;
+
+    Ok(movies)
 }
 
 // --------------------------------------------------------------------------
 // Tauri команды
 // --------------------------------------------------------------------------
 
+/// Возвращает все фильмы из БД.
+/// Вызывается фронтендом для первичной загрузки и индексирования Tantivy.
 #[tauri::command]
-pub async fn get_all_movies_from_db() -> Result<Vec<Movie>, AppError> {
-    // TODO: использовать реальный PostgresMovieRepository когда он будет готов
-    let repo = MockMovieRepository::new();
-    repo.get_all_movies().await
+pub async fn get_all_movies_from_db(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<Movie>, AppError> {
+    // Держим lock только пока выполняем синхронный запрос, до первого .await
+    let movies = {
+        let guard = state
+            .0
+            .lock()
+            .map_err(|_| AppError::Database("Lock poisoned".into()))?;
+        let conn = guard
+            .as_ref()
+            .ok_or_else(|| AppError::Database("DB not initialised".into()))?;
+        fetch_all_movies_sync(conn)?
+    };
+    Ok(movies)
 }
 
 // --------------------------------------------------------------------------
@@ -207,83 +193,72 @@ pub async fn get_all_movies_from_db() -> Result<Vec<Movie>, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
-    #[tokio::test]
-    async fn mock_repo_returns_five_movies() {
-        let repo = MockMovieRepository::new();
-        let movies = repo.get_all_movies().await.expect("should return movies");
-        assert_eq!(movies.len(), 5, "sample dataset must contain 5 films");
+    fn test_db_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join("movies_database.db")
     }
 
-    #[tokio::test]
-    async fn mock_repo_all_movies_have_nonzero_id() {
-        let repo = MockMovieRepository::new();
-        let movies = repo.get_all_movies().await.unwrap();
+    fn open_test_conn() -> Connection {
+        let path = test_db_path();
+        assert!(path.exists(), "Test DB not found at {}", path.display());
+        let conn = Connection::open(&path).expect("open DB");
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        conn
+    }
+
+    #[test]
+    fn db_file_exists() {
+        assert!(test_db_path().exists());
+    }
+
+    #[test]
+    fn fetch_returns_movies() {
+        let conn = open_test_conn();
+        let movies = fetch_all_movies_sync(&conn).expect("fetch must succeed");
+        assert!(!movies.is_empty(), "DB must contain at least one movie");
+    }
+
+    #[test]
+    fn all_movies_have_title() {
+        let conn = open_test_conn();
+        let movies = fetch_all_movies_sync(&conn).unwrap();
         for m in &movies {
-            assert!(m.id > 0, "every movie must have a positive id");
+            assert!(!m.title.is_empty(), "movie id={} has empty title", m.id);
         }
     }
 
-    #[tokio::test]
-    async fn mock_repo_get_by_id_known() {
-        let repo = MockMovieRepository::new();
-        let result = repo.get_movie_by_id(1).await.unwrap();
-        let movie = result.expect("id=1 should be found");
-        assert!(
-            movie.title.contains("Ирония судьбы"),
-            "id=1 should be 'Ирония судьбы'"
-        );
-    }
-
-    #[tokio::test]
-    async fn mock_repo_get_by_id_unknown() {
-        let repo = MockMovieRepository::new();
-        let result = repo.get_movie_by_id(9999).await.unwrap();
-        assert!(result.is_none(), "unknown id should return None");
-    }
-
-    #[tokio::test]
-    async fn mock_repo_get_by_ids_partial() {
-        let repo = MockMovieRepository::new();
-        let found = repo.get_movies_by_ids(&[1, 3, 9999]).await.unwrap();
-        assert_eq!(found.len(), 2, "only ids 1 and 3 exist in sample data");
-        let ids: Vec<u64> = found.iter().map(|m| m.id).collect();
-        assert!(ids.contains(&1));
-        assert!(ids.contains(&3));
-    }
-
-    #[tokio::test]
-    async fn mock_repo_get_by_ids_empty_slice() {
-        let repo = MockMovieRepository::new();
-        let found = repo.get_movies_by_ids(&[]).await.unwrap();
-        assert!(found.is_empty(), "empty id list should return empty vec");
-    }
-
-    #[tokio::test]
-    async fn mock_repo_movies_have_valid_ratings() {
-        let repo = MockMovieRepository::new();
-        let movies = repo.get_all_movies().await.unwrap();
+    #[test]
+    fn all_movies_have_nonzero_id() {
+        let conn = open_test_conn();
+        let movies = fetch_all_movies_sync(&conn).unwrap();
         for m in &movies {
-            assert!(
-                m.rating >= 0.0 && m.rating <= 10.0,
-                "rating must be in [0.0, 10.0], got {} for '{}'",
-                m.rating,
-                m.title
-            );
+            assert!(m.id > 0, "movie '{}' has id=0", m.title);
         }
     }
 
-    #[tokio::test]
-    async fn mock_repo_movies_have_valid_year() {
-        let repo = MockMovieRepository::new();
-        let movies = repo.get_all_movies().await.unwrap();
-        for m in &movies {
-            assert!(
-                m.year >= 1920 && m.year <= 2000,
-                "Soviet-era year expected, got {} for '{}'",
-                m.year,
-                m.title
-            );
-        }
+    #[test]
+    fn movies_have_actors_and_genres() {
+        let conn = open_test_conn();
+        let movies = fetch_all_movies_sync(&conn).unwrap();
+        let with_actors = movies.iter().filter(|m| !m.actors.is_empty()).count();
+        let with_genres = movies.iter().filter(|m| !m.genres.is_empty()).count();
+        assert!(with_actors > 0, "no movies have actors");
+        assert!(with_genres > 0, "no movies have genres");
+    }
+
+    #[test]
+    fn csv_to_vec_splits_correctly() {
+        let v = csv_to_vec(Some("Андрей Мягков, Барбара Брыльска".to_string()));
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0], "Андрей Мягков");
+        assert_eq!(v[1], "Барбара Брыльска");
+    }
+
+    #[test]
+    fn csv_to_vec_handles_none() {
+        assert!(csv_to_vec(None).is_empty());
     }
 }

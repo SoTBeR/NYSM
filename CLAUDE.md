@@ -107,7 +107,21 @@ Defined entirely in `src/app.css` via CSS custom properties. Key variable famili
 ### Settings flow
 `SettingsState` is an in-memory Mutex cache populated at startup and on every `load_settings`/`save_settings` call. The AI module reads settings via `settings_state.load()` — it does not access the store directly.
 
-## Pending integrations (stubs to replace)
+## Pending
 
-- **`db.rs` → `PostgresMovieRepository`**: awaiting PostgreSQL connection string. Add `sqlx` to `Cargo.toml`. The `MovieRepository` trait interface is already defined.
-- **`ai.rs` → `rank_movies()`**: awaiting AI aggregator API code and `API_KEY`. The function signature `(AiRankRequest, api_key, base_url) → AiRankResponse` is stable. The `reqwest` client is already in `Cargo.toml`.
+- **API key**: user enters it via Settings UI → saved in `nysm_settings.json` via `tauri-plugin-store`. Nothing to code.
+
+## Database (SQLite)
+
+- File: `src-tauri/assets/movies_database.db` — bundled into the app via `tauri.conf.json` → `bundle.resources`
+- Schema: `movies`, `actors`, `directors`, `genres`, `studios` + junction tables `movie_actors`, `movie_directors`, `movie_genres`, `movie_studios`
+- Key columns: `movie_id`, `title`, `description`, `release_year`, `duration_minutes`; related data via GROUP_CONCAT JOINs
+- Dev path: `$CARGO_MANIFEST_DIR/assets/movies_database.db` (resolved in `db::resolve_db_path`)
+- Release path: `$RESOURCE_DIR/movies_database.db`
+
+## AI API (gen-api.ru)
+
+- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/claude-4` → `{request_id}`
+- Polling: `GET https://api.gen-api.ru/api/v1/request/get/{request_id}` every 3s, max 60 polls
+- Model: `claude-opus-4-5`, `reasoning_effort: low`, `max_tokens: 2000`
+- Response: JSON array `[{movie_id, rank, reason}]` — parsed in `parse_response()` with fallback to original order on parse error

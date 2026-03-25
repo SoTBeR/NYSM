@@ -25,10 +25,10 @@ pub struct MovieSchema {
     pub description: Field,
     pub actors: Field,
     pub genres: Field,
+    pub studios: Field,
     pub year: Field,
+    pub duration_minutes: Field,
     pub director: Field,
-    pub rating: Field,
-    pub poster_url: Field,
 }
 
 impl MovieSchema {
@@ -38,7 +38,7 @@ impl MovieSchema {
         // Числовые поля хранятся как FAST (для сортировки/фильтра) + STORED + INDEXED
         let id = builder.add_u64_field("id", STORED | INDEXED | FAST);
         let year = builder.add_u64_field("year", STORED | INDEXED | FAST);
-        let rating = builder.add_f64_field("rating", STORED | INDEXED | FAST);
+        let duration_minutes = builder.add_u64_field("duration_minutes", STORED | FAST);
 
         // Текстовые поля для полнотекстового поиска
         let text_opts = TextOptions::default()
@@ -53,10 +53,8 @@ impl MovieSchema {
         let description = builder.add_text_field("description", text_opts.clone());
         let actors = builder.add_text_field("actors", text_opts.clone());
         let genres = builder.add_text_field("genres", text_opts.clone());
+        let studios = builder.add_text_field("studios", text_opts.clone());
         let director = builder.add_text_field("director", text_opts);
-
-        // poster_url — только хранение, не индексируем
-        let poster_url = builder.add_text_field("poster_url", STORED);
 
         MovieSchema {
             schema: builder.build(),
@@ -65,10 +63,10 @@ impl MovieSchema {
             description,
             actors,
             genres,
+            studios,
             year,
+            duration_minutes,
             director,
-            rating,
-            poster_url,
         }
     }
 }
@@ -84,7 +82,11 @@ pub struct SearchIndex {
 }
 
 impl SearchIndex {
-    /// Открывает или создаёт индекс в указанной директории
+    /// Открывает или создаёт индекс в указанной директории.
+    ///
+    /// Если на диске лежит индекс со старой схемой (например, после обновления
+    /// кода), он автоматически удаляется и создаётся заново.
+    /// Данные восстанавливаются из БД при следующем вызове `index_movies_internal`.
     pub fn open_or_create(index_dir: PathBuf) -> Result<Self, AppError> {
         std::fs::create_dir_all(&index_dir)
             .map_err(|e| AppError::Index(format!("Cannot create index dir: {e}")))?;
@@ -92,13 +94,19 @@ impl SearchIndex {
         let schema = MovieSchema::build();
         let mmap_dir = tantivy::directory::MmapDirectory::open(&index_dir)
             .map_err(|e| AppError::Index(e.to_string()))?;
-        let index = if Index::exists(&mmap_dir)
-            .map_err(|e| AppError::Index(e.to_string()))?
-        {
-            Index::open_in_dir(&index_dir).map_err(|e| AppError::Index(e.to_string()))?
-        } else {
-            Index::create_in_dir(&index_dir, schema.schema.clone())
-                .map_err(|e| AppError::Index(e.to_string()))?
+
+        // open_or_create: открывает если схема совпадает, создаёт если индекса нет.
+        // При несовпадении схем возвращает ошибку → стираем директорию и пересоздаём.
+        let index = match Index::open_or_create(mmap_dir, schema.schema.clone()) {
+            Ok(idx) => idx,
+            Err(e) => {
+                eprintln!("[NYSM] Tantivy index schema mismatch ({e}), recreating...");
+                let _ = std::fs::remove_dir_all(&index_dir);
+                std::fs::create_dir_all(&index_dir)
+                    .map_err(|e2| AppError::Index(format!("Cannot recreate index dir: {e2}")))?;
+                Index::create_in_dir(&index_dir, schema.schema.clone())
+                    .map_err(|e2| AppError::Index(e2.to_string()))?
+            }
         };
 
         let reader = index
@@ -166,12 +174,10 @@ pub fn index_movies_internal(
         doc.add_text(s.description, &movie.description);
         doc.add_text(s.actors, movie.actors.join(", "));
         doc.add_text(s.genres, movie.genres.join(", "));
+        doc.add_text(s.studios, movie.studios.join(", "));
         doc.add_u64(s.year, movie.year as u64);
+        doc.add_u64(s.duration_minutes, movie.duration_minutes.unwrap_or(0) as u64);
         doc.add_text(s.director, &movie.director);
-        doc.add_f64(s.rating, movie.rating as f64);
-        if let Some(url) = &movie.poster_url {
-            doc.add_text(s.poster_url, url);
-        }
 
         writer
             .add_document(doc)
@@ -207,15 +213,16 @@ pub fn fuzzy_search(
     let searcher = idx.reader.searcher();
     let s = &idx.schema;
 
-    // QueryParser с весами: title >> director > actors >= genres > description
+    // QueryParser с весами: title >> director > actors >= genres >= studios > description
     let mut query_parser = QueryParser::for_index(
         &idx.index,
-        vec![s.title, s.director, s.actors, s.genres, s.description],
+        vec![s.title, s.director, s.actors, s.genres, s.studios, s.description],
     );
     query_parser.set_field_boost(s.title, 4.0);
     query_parser.set_field_boost(s.director, 2.0);
     query_parser.set_field_boost(s.actors, 1.5);
     query_parser.set_field_boost(s.genres, 1.5);
+    query_parser.set_field_boost(s.studios, 1.2);
 
     // Строим запрос: пробуем оригинальный + нижний регистр
     let query_lower = query.to_lowercase();
@@ -253,41 +260,31 @@ fn doc_to_movie(doc: &TantivyDocument, s: &MovieSchema) -> Result<Movie, AppErro
             .and_then(|v| v.as_u64())
             .unwrap_or(0)
     };
-    let get_f64 = |field: Field| -> f64 {
-        doc.get_first(field)
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0)
+
+    let split_csv = |raw: String| -> Vec<String> {
+        if raw.is_empty() {
+            vec![]
+        } else {
+            raw.split(", ").map(|s| s.trim().to_string()).collect()
+        }
     };
 
-    let actors_raw = get_text(s.actors);
-    let actors: Vec<String> = if actors_raw.is_empty() {
-        vec![]
-    } else {
-        actors_raw.split(", ").map(|s| s.to_string()).collect()
-    };
-
-    let genres_raw = get_text(s.genres);
-    let genres: Vec<String> = if genres_raw.is_empty() {
-        vec![]
-    } else {
-        genres_raw.split(", ").map(|s| s.to_string()).collect()
-    };
-
-    let poster = {
-        let t = get_text(s.poster_url);
-        if t.is_empty() { None } else { Some(t) }
+    let duration = {
+        let d = get_u64(s.duration_minutes);
+        if d == 0 { None } else { Some(d as u32) }
     };
 
     Ok(Movie {
         id: get_u64(s.id),
         title: get_text(s.title),
         description: get_text(s.description),
-        actors,
-        genres,
+        actors: split_csv(get_text(s.actors)),
+        genres: split_csv(get_text(s.genres)),
+        studios: split_csv(get_text(s.studios)),
         year: get_u64(s.year) as u32,
+        duration_minutes: duration,
         director: get_text(s.director),
-        rating: get_f64(s.rating) as f32,
-        poster_url: poster,
+        rating: None,
     })
 }
 
@@ -355,10 +352,11 @@ mod tests {
             description: format!("Описание для {title}"),
             actors: vec!["Актёр А".into(), "Актёр Б".into()],
             genres: vec!["Комедия".into()],
+            studios: vec!["Мосфильм".into()],
             year: 1970 + id as u32,
+            duration_minutes: Some(90 + id as u32),
             director: "Режиссёр".into(),
-            rating: 7.0 + id as f32 * 0.1,
-            poster_url: None,
+            rating: None,
         }
     }
 

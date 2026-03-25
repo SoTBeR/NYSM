@@ -6,10 +6,11 @@ export interface Movie {
   description: string;
   actors: string[];
   genres: string[];
+  studios: string[];
   year: number;
+  duration_minutes: number | null;
   director: string;
-  rating: number;
-  poster_url: string | null;
+  rating: number | null;
 }
 
 export interface SearchResult {

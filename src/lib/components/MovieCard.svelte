@@ -10,19 +10,17 @@
   let { item, index = 0 }: Props = $props();
 
   /** Форматирует рейтинг как N.N */
-  function formatRating(r: number): string {
-    return r.toFixed(1);
+  function formatRating(r: number | null): string {
+    return r != null ? r.toFixed(1) : '—';
   }
 
   /** Возвращает класс цвета для рейтинга */
-  function ratingClass(r: number): string {
+  function ratingClass(r: number | null): string {
+    if (r == null) return 'rating-low';
     if (r >= 8) return 'rating-high';
     if (r >= 6.5) return 'rating-mid';
     return 'rating-low';
   }
-
-  /** Заглушка постера — SVG плейсхолдер */
-  let posterError = $state(false);
 
   // Computed из props (реактивно через $derived)
   const movie = $derived(item.movie);
@@ -40,34 +38,6 @@
     {rank}
   </div>
 
-  <!-- Poster -->
-  <div class="poster-wrap">
-    {#if movie.poster_url && !posterError}
-      <img
-        src={movie.poster_url}
-        alt="Постер фильма «{movie.title}»"
-        class="poster-img"
-        onerror={() => (posterError = true)}
-        loading="lazy"
-      />
-    {:else}
-      <div class="poster-placeholder" aria-hidden="true">
-        <svg viewBox="0 0 80 110" fill="none" xmlns="http://www.w3.org/2000/svg" width="60">
-          <!-- Film reel placeholder -->
-          <rect width="80" height="110" rx="4" fill="#2A1010"/>
-          <circle cx="40" cy="50" r="22" stroke="#7A3A3A" stroke-width="2"/>
-          <circle cx="40" cy="50" r="8" stroke="#7A3A3A" stroke-width="2"/>
-          <line x1="40" y1="28" x2="40" y2="72" stroke="#7A3A3A" stroke-width="1.5"/>
-          <line x1="18" y1="50" x2="62" y2="50" stroke="#7A3A3A" stroke-width="1.5"/>
-          <line x1="24" y1="33" x2="56" y2="67" stroke="#7A3A3A" stroke-width="1.5"/>
-          <line x1="24" y1="67" x2="56" y2="33" stroke="#7A3A3A" stroke-width="1.5"/>
-          <!-- Star -->
-          <text x="40" y="96" text-anchor="middle" font-size="14" fill="#CC1A1A">★</text>
-        </svg>
-      </div>
-    {/if}
-  </div>
-
   <!-- Content -->
   <div class="card-content">
     <div class="card-header">
@@ -81,9 +51,17 @@
 
       <div class="meta-row">
         <span class="meta-year">{movie.year}</span>
+        {#if movie.duration_minutes}
+          <span class="meta-sep" aria-hidden="true">·</span>
+          <span class="meta-duration">{movie.duration_minutes} мин</span>
+        {/if}
         {#if movie.director}
           <span class="meta-sep" aria-hidden="true">·</span>
           <span class="meta-director">реж. {movie.director}</span>
+        {/if}
+        {#if movie.studios.length > 0}
+          <span class="meta-sep" aria-hidden="true">·</span>
+          <span class="meta-studio">{movie.studios[0]}</span>
         {/if}
       </div>
     </div>
@@ -164,9 +142,9 @@
     width: 28px;
     height: 28px;
     border-radius: var(--radius-full);
-    background: var(--red-800);
-    border: 1px solid var(--red-600);
-    color: var(--gold-300);
+    background: linear-gradient(160deg, var(--red-700) 0%, var(--red-900) 100%);
+    border: 1px solid var(--red-500);
+    color: var(--gold-200);
     font-size: var(--text-xs);
     font-weight: 700;
     font-family: var(--font-body);
@@ -175,33 +153,7 @@
     justify-content: center;
     line-height: 1;
     letter-spacing: 0;
-  }
-
-  /* ---- Poster ---- */
-  .poster-wrap {
-    flex-shrink: 0;
-    width: 88px;
-    height: 124px;
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
-  }
-
-  .poster-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  .poster-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-surface);
+    box-shadow: 0 0 8px rgba(204, 26, 26, 0.4);
   }
 
   /* ---- Content ---- */
@@ -252,9 +204,9 @@
     font-size: 12px;
   }
 
-  .rating-high { color: var(--gold-400); }
-  .rating-mid  { color: var(--gold-300); }
-  .rating-low  { color: var(--text-muted); }
+  .rating-high { color: var(--gold-300); text-shadow: 0 0 8px rgba(245, 204, 69, 0.5); }
+  .rating-mid  { color: var(--gold-400); }
+  .rating-low  { color: var(--text-secondary); }
 
   /* ---- Meta ---- */
   .meta-row {
@@ -274,10 +226,22 @@
     color: var(--text-muted);
   }
 
+  .meta-duration {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
   .meta-director {
     font-size: var(--text-sm);
     color: var(--text-secondary);
     font-style: italic;
+  }
+
+  .meta-studio {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    font-style: italic;
+    text-transform: lowercase;
   }
 
   /* ---- Genres ---- */
@@ -290,9 +254,9 @@
   .genre-tag {
     font-size: var(--text-xs);
     font-weight: 500;
-    color: var(--gold-300);
-    background: rgba(201, 168, 76, 0.08);
-    border: 1px solid rgba(201, 168, 76, 0.2);
+    color: var(--gold-200);
+    background: rgba(232, 184, 48, 0.14);
+    border: 1px solid rgba(232, 184, 48, 0.35);
     border-radius: var(--radius-sm);
     padding: 2px var(--space-2);
     letter-spacing: 0.01em;
@@ -308,12 +272,12 @@
   /* ---- Actors ---- */
   .actors {
     font-size: var(--text-xs);
-    color: var(--text-muted);
+    color: var(--text-secondary);
     line-height: 1.4;
   }
 
   .actors-label {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-weight: 500;
     margin-right: 3px;
   }
@@ -321,15 +285,15 @@
   /* ---- AI reason ---- */
   .ai-reason {
     font-size: var(--text-xs);
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-style: italic;
-    border-left: 2px solid var(--red-800);
+    border-left: 2px solid var(--red-600);
     padding-left: var(--space-2);
     margin-top: var(--space-1);
   }
 
   .ai-label {
-    color: var(--red-500);
+    color: var(--red-400);
     font-weight: 600;
     font-style: normal;
     margin-right: 4px;

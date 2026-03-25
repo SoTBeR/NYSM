@@ -11,7 +11,22 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="70859dba-c421-4f26-8544-9b2bc846e029" name="Changes" comment="" />
+    <list default="true" id="70859dba-c421-4f26-8544-9b2bc846e029" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/src/ai.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/ai.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/src/db.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/db.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/src/search.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/search.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/src/types.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/types.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/tauri.conf.json" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/tauri.conf.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/components/MovieCard.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/MovieCard.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/components/SettingsModal.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/SettingsModal.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/+page.svelte" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -21,6 +36,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "SoTBeR"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/SoTBeR/NYSM.git",
+    "accountId": "4a3c4d0c-81f0-43ce-ad33-31571ddade86"
+  }
+}]]></component>
   <component name="MacroExpansionManager">
     <option name="directoryName" value="jtQnDVga" />
   </component>
@@ -108,7 +135,7 @@
       <updated>1774298129949</updated>
       <workItem from="1774298130974" duration="1898000" />
       <workItem from="1774300061500" duration="832000" />
-      <workItem from="1774452864793" duration="5691000" />
+      <workItem from="1774452864793" duration="9935000" />
     </task>
     <servers />
   </component>
