@@ -1,0 +1,378 @@
+/* ============================================================
+   NYSM — New Year Soviet Movies
+   Design System: Soviet New Year, minimalist & modern
+   ============================================================ */
+
+/* --- Google Fonts: IBM Plex Sans (Cyrillic) + Playfair Display --- */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:wght@700;900&display=swap');
+
+/* ============================================================
+   CSS Custom Properties (Design Tokens)
+   ============================================================ */
+:root {
+  /* Background — тёмно-бордовый, не чёрный */
+  --bg-base:       #120404;
+  --bg-surface:    #1C0808;
+  --bg-card:       #261010;
+  --bg-card-hover: #321616;
+  --bg-modal:      #200C0C;
+  --bg-input:      #190808;
+  --bg-overlay:    rgba(10, 2, 2, 0.82);
+
+  /* Primary: Vivid Crimson */
+  --red-900: #5C0000;
+  --red-800: #8A0000;
+  --red-700: #B00000;
+  --red-600: #CC1A1A;
+  --red-500: #E53030;
+  --red-400: #F55050;
+
+  /* Accent: Bright Gold */
+  --gold-900: #7A5500;
+  --gold-700: #B07A00;
+  --gold-500: #D4A520;
+  --gold-400: #E8B830;
+  --gold-300: #F5CC45;
+  --gold-200: #FAE070;
+  --gold-100: #FEF2A8;
+
+  /* Text — ярче */
+  --text-primary:   #FFFFFF;
+  --text-secondary: #DCC0A8;
+  --text-muted:     #8A6A5A;
+  --text-inverse:   #120404;
+
+  /* Border — заметные */
+  --border-subtle:  #3C1818;
+  --border-medium:  #5A2A2A;
+  --border-strong:  #7A3A3A;
+  --border-gold:    rgba(232, 184, 48, 0.5);
+  --border-red:     rgba(204, 26, 26, 0.6);
+
+  /* Glow effects — сильнее */
+  --glow-red:  0 0 24px rgba(204, 26, 26, 0.55), 0 0 48px rgba(204, 26, 26, 0.2);
+  --glow-gold: 0 0 20px rgba(232, 184, 48, 0.55), 0 0 40px rgba(232, 184, 48, 0.2);
+
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   17px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  32px;
+  --text-3xl:  48px;
+  --text-4xl:  72px;
+
+  /* Spacing */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md:  0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-lg:  0 8px 28px rgba(0, 0, 0, 0.7);
+  --shadow-xl:  0 16px 56px rgba(0, 0, 0, 0.8);
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* Transitions */
+  --transition-fast:   150ms ease;
+  --transition-base:   200ms ease;
+  --transition-slow:   300ms ease;
+  --transition-appear: 350ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout */
+  --content-max-width: 900px;
+  --search-max-width:  640px;
+}
+
+/* ============================================================
+   Reset & Base
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+  /* Тёплое виньетирование — подчёркивает глубину красного */
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(180, 20, 20, 0.18) 0%, transparent 65%),
+    radial-gradient(ellipse at 50% 100%, rgba(120, 10, 10, 0.12) 0%, transparent 60%);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--red-700);
+}
+
+/* Selection */
+::selection {
+  background: rgba(163, 21, 21, 0.4);
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Typography
+   ============================================================ */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+p {
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Form elements
+   ============================================================ */
+input, button, textarea {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+}
+
+input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+  outline: none;
+  width: 100%;
+}
+
+input::placeholder {
+  color: var(--text-muted);
+}
+
+input:focus {
+  border-color: var(--border-red);
+  box-shadow: 0 0 0 3px rgba(163, 21, 21, 0.15);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition:
+    background-color var(--transition-base),
+    transform var(--transition-fast),
+    box-shadow var(--transition-base);
+  outline: none;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* Primary button */
+.btn-primary {
+  background: linear-gradient(160deg, var(--red-600) 0%, var(--red-700) 100%);
+  color: #fff;
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--red-500);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(160deg, var(--red-500) 0%, var(--red-600) 100%);
+  box-shadow: var(--glow-red);
+  border-color: var(--red-400);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--border-medium);
+}
+
+.btn-secondary:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Icon button */
+.btn-icon {
+  background: transparent;
+  color: var(--text-muted);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.btn-icon:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+  background: var(--bg-card);
+}
+
+/* ============================================================
+   Decorative SVG elements (используются в компонентах)
+   ============================================================ */
+
+/* Snowflake background decoration */
+.decoration-snowflake {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.07;
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+
+/* Fade + slide up — для появления результатов */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Pulse — для загрузки */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* Spin — для спиннера */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Shimmer — для skeleton loader */
+@keyframes shimmer {
+  from { background-position: -200% center; }
+  to   { background-position: 200% center; }
+}
+
+/* Gentle float — для звезды в шапке */
+@keyframes gentleFloat {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-4px) rotate(3deg); }
+}
+
+/* Modal appear */
+@keyframes modalAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.93) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Overlay appear */
+@keyframes overlayAppear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ============================================================
+   Utility classes
+   ============================================================ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============================================================
+   App layout
+   ============================================================ */
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-container {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}

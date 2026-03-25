@@ -1,0 +1,738 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import { settingsStore, settingsLoaded } from '$lib/stores/settings';
+  import SettingsModal from '$lib/components/SettingsModal.svelte';
+  import MovieCard from '$lib/components/MovieCard.svelte';
+  import type { SearchResult, RankedMovie, AppSettings } from '$lib/types';
+
+  // --- State ---
+  let query = $state('');
+  let searchState: 'idle' | 'searching' | 'ranking' | 'done' | 'error' = $state('idle');
+  let results = $state<RankedMovie[]>([]);
+  let errorMsg = $state('');
+  let settingsOpen = $state(false);
+
+  // Search input ref
+  let inputEl: HTMLInputElement | null = $state(null);
+
+  // --- Init: load settings ---
+  onMount(async () => {
+    try {
+      const settings = await invoke<AppSettings>('load_settings');
+      settingsStore.set(settings);
+      settingsLoaded.set(true);
+    } catch {
+      // Настройки не критичны при запуске
+      settingsLoaded.set(true);
+    }
+  });
+
+  // --- Search handler ---
+  async function handleSearch(e?: Event) {
+    e?.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+
+    searchState = 'searching';
+    errorMsg = '';
+    results = [];
+
+    try {
+      // Шаг 1: нечёткий поиск в Tantivy
+      const searchResults = await invoke<SearchResult[]>('search_movies', {
+        query: q,
+        limit: 20,
+      });
+
+      if (searchResults.length === 0) {
+        // Нет результатов — показываем пустой список без AI
+        searchState = 'done';
+        results = [];
+        return;
+      }
+
+      // Шаг 2: AI ранжирование
+      searchState = 'ranking';
+      const movies = searchResults.map((r) => r.movie);
+      const ranked = await invoke<RankedMovie[]>('ai_rank_movies', {
+        userQuery: q,
+        movies,
+      });
+
+      results = ranked;
+      searchState = 'done';
+    } catch (err) {
+      errorMsg = typeof err === 'string' ? err : 'Произошла ошибка при поиске';
+      searchState = 'error';
+    }
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  }
+
+  // Сбросить состояние при очистке поля
+  $effect(() => {
+    if (query === '') {
+      searchState = 'idle';
+      results = [];
+      errorMsg = '';
+    }
+  });
+
+  // Анимированный текст статуса
+  const statusText: Record<'idle' | 'searching' | 'ranking' | 'done' | 'error', string> = {
+    idle: '',
+    searching: 'Ищем в базе фильмов...',
+    ranking: 'Нейросеть анализирует результаты...',
+    done: '',
+    error: '',
+  };
+</script>
+
+<!-- ============================================================
+     Background decorations (snowflakes)
+     ============================================================ -->
+<div class="bg-decorations" aria-hidden="true">
+  <span class="snowflake snowflake-1">❄</span>
+  <span class="snowflake snowflake-2">❄</span>
+  <span class="snowflake snowflake-3">❅</span>
+  <span class="snowflake snowflake-4">❆</span>
+  <span class="snowflake snowflake-5">❄</span>
+  <span class="snowflake snowflake-6">❅</span>
+</div>
+
+<!-- ============================================================
+     Settings button (top-right)
+     ============================================================ -->
+<div class="topbar">
+  <button
+    class="btn-icon settings-btn"
+    onclick={() => (settingsOpen = true)}
+    aria-label="Открыть настройки"
+    title="Настройки"
+  >
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+  </button>
+</div>
+
+<!-- ============================================================
+     Main content
+     ============================================================ -->
+<main class="main-content">
+  <div class="page-container">
+
+    <!-- Header / Hero -->
+    <header class="app-header">
+      <div class="star-wrap">
+        <span class="hero-star" aria-hidden="true">★</span>
+      </div>
+      <h1 class="app-title">NYSM</h1>
+      <p class="app-subtitle">Советские новогодние фильмы</p>
+      <div class="header-ornament" aria-hidden="true">
+        <span class="ornament-line"></span>
+        <span class="ornament-diamond">◆</span>
+        <span class="ornament-line"></span>
+      </div>
+    </header>
+
+    <!-- Search bar -->
+    <section class="search-section" aria-label="Поиск фильмов">
+      <form class="search-form" onsubmit={handleSearch}>
+        <div class="search-input-wrap">
+          <!-- Search icon -->
+          <span class="search-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <input
+            bind:this={inputEl}
+            bind:value={query}
+            onkeydown={handleKeydown}
+            type="search"
+            class="search-input"
+            placeholder="Ирония судьбы, советская комедия, Морозко..."
+            aria-label="Поисковый запрос"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            disabled={searchState === 'searching' || searchState === 'ranking'}
+          />
+          <!-- Clear button -->
+          {#if query}
+            <button
+              type="button"
+              class="btn-icon search-clear"
+              onclick={() => { query = ''; inputEl?.focus(); }}
+              aria-label="Очистить поиск"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          {/if}
+        </div>
+
+        <button
+          type="submit"
+          class="btn-primary search-btn"
+          disabled={!query.trim() || searchState === 'searching' || searchState === 'ranking'}
+          aria-label="Найти фильмы"
+        >
+          {#if searchState === 'searching' || searchState === 'ranking'}
+            <span class="search-spinner" aria-hidden="true"></span>
+          {:else}
+            Найти
+          {/if}
+        </button>
+      </form>
+    </section>
+
+    <!-- Status line -->
+    {#if statusText[searchState]}
+      <p class="status-line" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        {statusText[searchState]}
+      </p>
+    {/if}
+
+    <!-- Results / States -->
+    <section class="results-section" aria-label="Результаты поиска" aria-live="polite">
+
+      <!-- Idle state -->
+      {#if searchState === 'idle'}
+        <div class="empty-state">
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" width="80" height="80">
+              <!-- Film strip -->
+              <rect x="10" y="35" width="100" height="50" rx="6" stroke="var(--border-strong)" stroke-width="2"/>
+              <rect x="10" y="35" width="16" height="50" fill="var(--bg-surface)" rx="4"/>
+              <rect x="94" y="35" width="16" height="50" fill="var(--bg-surface)" rx="4"/>
+              <!-- Sprocket holes -->
+              <circle cx="18" cy="48" r="3" fill="var(--border-medium)"/>
+              <circle cx="18" cy="60" r="3" fill="var(--border-medium)"/>
+              <circle cx="18" cy="72" r="3" fill="var(--border-medium)"/>
+              <circle cx="102" cy="48" r="3" fill="var(--border-medium)"/>
+              <circle cx="102" cy="60" r="3" fill="var(--border-medium)"/>
+              <circle cx="102" cy="72" r="3" fill="var(--border-medium)"/>
+              <!-- Star in center -->
+              <text x="60" y="68" text-anchor="middle" font-size="28" fill="var(--border-strong)">★</text>
+              <!-- Snowflakes above -->
+              <text x="30" y="22" text-anchor="middle" font-size="16" fill="var(--border-medium)" opacity="0.6">❄</text>
+              <text x="60" y="18" text-anchor="middle" font-size="20" fill="var(--border-medium)" opacity="0.5">❆</text>
+              <text x="90" y="22" text-anchor="middle" font-size="16" fill="var(--border-medium)" opacity="0.6">❅</text>
+            </svg>
+          </div>
+          <p class="empty-title">Найдите советский новогодний фильм</p>
+          <p class="empty-hint">
+            Введите название, описание или имя актёра&nbsp;—<br />
+            нейросеть поможет найти самое подходящее
+          </p>
+        </div>
+
+      <!-- Loading states (handled by status-line above) -->
+      {:else if searchState === 'searching' || searchState === 'ranking'}
+        <div class="loading-state" aria-hidden="true">
+          {#each Array(3) as _, i}
+            <div class="skeleton-card" style="animation-delay: {i * 80}ms"></div>
+          {/each}
+        </div>
+
+      <!-- Error state -->
+      {:else if searchState === 'error'}
+        <div class="error-state" role="alert">
+          <span class="error-icon" aria-hidden="true">⚠</span>
+          <p class="error-title">Что-то пошло не так</p>
+          <p class="error-msg">{errorMsg}</p>
+          <button class="btn-secondary retry-btn" onclick={() => handleSearch()}>
+            Попробовать снова
+          </button>
+        </div>
+
+      <!-- Results -->
+      {:else if searchState === 'done'}
+        {#if results.length === 0}
+          <div class="no-results">
+            <p class="no-results-icon" aria-hidden="true">☆</p>
+            <p class="no-results-title">Ничего не найдено</p>
+            <p class="no-results-hint">
+              Попробуйте другой запрос или проверьте написание
+            </p>
+          </div>
+        {:else}
+          <div class="results-header">
+            <p class="results-count">
+              Найдено фильмов: <strong>{results.length}</strong>
+            </p>
+          </div>
+          <ol class="results-list" aria-label="Список найденных фильмов">
+            {#each results as item, i (item.movie.id)}
+              <li>
+                <MovieCard {item} index={i} />
+              </li>
+            {/each}
+          </ol>
+        {/if}
+      {/if}
+
+    </section>
+
+  </div>
+</main>
+
+<!-- Settings Modal -->
+<SettingsModal bind:open={settingsOpen} onclose={() => (settingsOpen = false)} />
+
+<style>
+  /* ============================================================
+     Background decorations
+     ============================================================ */
+  .bg-decorations {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .snowflake {
+    position: absolute;
+    color: var(--text-primary);
+    opacity: 0.05;
+    font-size: 48px;
+    user-select: none;
+  }
+
+  .snowflake-1 { top: 8%;  left: 6%;   font-size: 36px; opacity: 0.14; }
+  .snowflake-2 { top: 15%; right: 8%;  font-size: 52px; opacity: 0.11; }
+  .snowflake-3 { top: 50%; left: 3%;   font-size: 28px; opacity: 0.13; }
+  .snowflake-4 { top: 45%; right: 4%;  font-size: 40px; opacity: 0.12; }
+  .snowflake-5 { bottom: 20%; left: 10%;  font-size: 60px; opacity: 0.09; }
+  .snowflake-6 { bottom: 15%; right: 7%;  font-size: 44px; opacity: 0.10; }
+
+  /* ============================================================
+     Topbar
+     ============================================================ */
+  .topbar {
+    position: fixed;
+    top: var(--space-4);
+    right: var(--space-5);
+    z-index: 100;
+  }
+
+  .settings-btn {
+    width: 38px;
+    height: 38px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-medium);
+    background: rgba(38, 16, 16, 0.85);
+    backdrop-filter: blur(10px);
+    transition:
+      color var(--transition-base),
+      border-color var(--transition-base),
+      background-color var(--transition-base),
+      box-shadow var(--transition-base);
+  }
+
+  .settings-btn:hover {
+    color: var(--gold-300);
+    border-color: var(--border-gold);
+    background: var(--bg-card-hover);
+    box-shadow: var(--glow-gold);
+  }
+
+  /* ============================================================
+     Main content
+     ============================================================ */
+  .main-content {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-12) 0 var(--space-16);
+  }
+
+  /* ============================================================
+     Header / Hero
+     ============================================================ */
+  .app-header {
+    text-align: center;
+    margin-bottom: var(--space-10);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .star-wrap {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hero-star {
+    font-size: 32px;
+    color: var(--red-500);
+    display: block;
+    animation: gentleFloat 4s ease-in-out infinite;
+    filter: drop-shadow(0 0 12px rgba(204, 26, 26, 0.9)) drop-shadow(0 0 24px rgba(204, 26, 26, 0.45));
+  }
+
+  .app-title {
+    font-family: var(--font-display);
+    font-size: var(--text-4xl);
+    font-weight: 900;
+    color: var(--text-primary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    line-height: 1;
+
+    background: linear-gradient(
+      135deg,
+      #fff 0%,
+      var(--gold-300) 35%,
+      var(--gold-100) 55%,
+      #fff 80%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+
+    text-shadow: none;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+  }
+
+  .app-subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+
+  /* Ornament divider */
+  .header-ornament {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--border-strong);
+    margin-top: var(--space-1);
+  }
+
+  .ornament-line {
+    display: block;
+    width: 64px;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--red-600),
+      transparent
+    );
+  }
+
+  .ornament-diamond {
+    font-size: 8px;
+    color: var(--red-500);
+    opacity: 1;
+  }
+
+  /* ============================================================
+     Search section
+     ============================================================ */
+  .search-section {
+    max-width: var(--search-max-width);
+    margin: 0 auto var(--space-6);
+    width: 100%;
+  }
+
+  .search-form {
+    display: flex;
+    gap: var(--space-3);
+    align-items: stretch;
+  }
+
+  .search-input-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: var(--space-4);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .search-input {
+    height: 48px;
+    padding-left: 46px;
+    padding-right: 40px;
+    font-size: var(--text-base);
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    transition:
+      border-color var(--transition-base),
+      box-shadow var(--transition-base),
+      background-color var(--transition-base);
+    outline: none;
+    width: 100%;
+
+    /* Remove default search clear button */
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .search-input::-webkit-search-cancel-button {
+    display: none;
+  }
+
+  .search-input::placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .search-input:focus {
+    border-color: var(--border-red);
+    box-shadow: 0 0 0 3px rgba(163, 21, 21, 0.15), var(--shadow-sm);
+    background: var(--bg-input);
+  }
+
+  .search-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .search-clear {
+    position: absolute;
+    right: var(--space-2);
+    color: var(--text-muted);
+    border: none;
+    background: transparent;
+    z-index: 1;
+  }
+
+  .search-clear:hover {
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+  }
+
+  .search-btn {
+    height: 48px;
+    padding: 0 var(--space-6);
+    font-size: var(--text-base);
+    border-radius: var(--radius-lg);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 100px;
+    justify-content: center;
+  }
+
+  .search-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Spinner in search button */
+  .search-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(245, 240, 232, 0.3);
+    border-top-color: var(--text-primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  /* ============================================================
+     Status line
+     ============================================================ */
+  .status-line {
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--red-600);
+    animation: pulse 1.2s ease infinite;
+  }
+
+  /* ============================================================
+     Results section
+     ============================================================ */
+  .results-section {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ---- Idle / Empty state ---- */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-16) 0;
+    gap: var(--space-4);
+    text-align: center;
+  }
+
+  .empty-icon {
+    opacity: 0.35;
+    margin-bottom: var(--space-2);
+  }
+
+  .empty-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--text-secondary);
+  }
+
+  .empty-hint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  /* ---- Skeleton loading ---- */
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .skeleton-card {
+    height: 140px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(
+      90deg,
+      var(--bg-card) 0%,
+      rgba(122, 58, 58, 0.35) 50%,
+      var(--bg-card) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease infinite;
+    border: 1px solid var(--border-medium);
+  }
+
+  /* ---- Error state ---- */
+  .error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-12) 0;
+    gap: var(--space-3);
+    text-align: center;
+  }
+
+  .error-icon {
+    font-size: 32px;
+    color: var(--red-500);
+  }
+
+  .error-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    color: var(--text-secondary);
+    font-weight: 700;
+  }
+
+  .error-msg {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    max-width: 400px;
+  }
+
+  .retry-btn {
+    margin-top: var(--space-2);
+  }
+
+  /* ---- No results ---- */
+  .no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-12) 0;
+    gap: var(--space-3);
+    text-align: center;
+  }
+
+  .no-results-icon {
+    font-size: 48px;
+    color: var(--border-strong);
+  }
+
+  .no-results-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--text-secondary);
+  }
+
+  .no-results-hint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+  }
+
+  /* ---- Results list ---- */
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: var(--space-4);
+    padding: 0 var(--space-1);
+  }
+
+  .results-count {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+  }
+
+  .results-count strong {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  .results-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: 0;
+    margin: 0;
+  }
+
+  .results-list li {
+    display: block;
+  }
+</style>

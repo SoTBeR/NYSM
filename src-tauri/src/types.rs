@@ -1,0 +1,170 @@
+use serde::{Deserialize, Serialize};
+
+/// Полная информация о фильме (из БД / индекса)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Movie {
+    pub id: u64,
+    pub title: String,
+    pub description: String,
+    pub actors: Vec<String>,
+    pub genres: Vec<String>,
+    pub year: u32,
+    pub director: String,
+    pub rating: f32,
+    pub poster_url: Option<String>,
+}
+
+/// Результат поиска из Tantivy — облегчённая версия с оценкой релевантности
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub movie: Movie,
+    /// Оценка релевантности от Tantivy (выше = лучше)
+    pub score: f32,
+}
+
+/// Отранжированный результат после прохода через AI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RankedMovie {
+    pub movie: Movie,
+    /// Позиция в финальном рейтинге (1-based)
+    pub rank: u32,
+    /// Объяснение от AI, почему фильм подходит (может быть пустым)
+    pub reason: String,
+}
+
+/// Настройки приложения (сохраняются через tauri-plugin-store)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AppSettings {
+    /// API ключ нейросетевого агрегатора
+    pub ai_api_key: String,
+    /// Базовый URL AI API (может быть переопределён пользователем)
+    pub ai_base_url: String,
+}
+
+/// Параметры запроса поиска от фронтенда
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub query: String,
+    /// Максимальное число результатов из Tantivy (до передачи в AI)
+    pub limit: Option<usize>,
+}
+
+/// Унифицированный тип ошибки для команд Tauri
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error("Search error: {0}")]
+    Search(String),
+    /// Зарезервировано для будущей реализации AI API
+    #[allow(dead_code)]
+    #[error("AI API error: {0}")]
+    Ai(String),
+    #[error("Settings error: {0}")]
+    Settings(String),
+    /// Зарезервировано для будущей реализации PostgreSQL
+    #[allow(dead_code)]
+    #[error("Database error: {0}")]
+    Database(String),
+    #[error("Index error: {0}")]
+    Index(String),
+}
+
+// Tauri требует, чтобы ошибка команды была сериализуемой в JSON
+impl Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+// --------------------------------------------------------------------------
+// Тесты
+// --------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_error_serializes_to_string() {
+        let err = AppError::Search("index missing".into());
+        let json = serde_json::to_string(&err).expect("serialize must not fail");
+        assert_eq!(json, r#""Search error: index missing""#);
+    }
+
+    #[test]
+    fn app_error_settings_variant() {
+        let err = AppError::Settings("lock poisoned".into());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, r#""Settings error: lock poisoned""#);
+    }
+
+    #[test]
+    fn app_error_index_variant() {
+        let err = AppError::Index("not initialised".into());
+        assert!(err.to_string().contains("Index error"));
+    }
+
+    #[test]
+    fn app_settings_default_is_empty_strings() {
+        let s = AppSettings::default();
+        assert_eq!(s.ai_api_key, "");
+        assert_eq!(s.ai_base_url, "");
+    }
+
+    #[test]
+    fn app_settings_roundtrips_through_json() {
+        let original = AppSettings {
+            ai_api_key: "sk-test-key".into(),
+            ai_base_url: "https://api.example.com".into(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.ai_api_key, original.ai_api_key);
+        assert_eq!(restored.ai_base_url, original.ai_base_url);
+    }
+
+    #[test]
+    fn movie_roundtrips_through_json() {
+        let m = Movie {
+            id: 42,
+            title: "Тест".into(),
+            description: "Описание".into(),
+            actors: vec!["Актёр 1".into(), "Актёр 2".into()],
+            genres: vec!["Комедия".into()],
+            year: 1970,
+            director: "Режиссёр".into(),
+            rating: 7.5,
+            poster_url: None,
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        let restored: Movie = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.id, 42);
+        assert_eq!(restored.actors.len(), 2);
+        assert!(restored.poster_url.is_none());
+    }
+
+    #[test]
+    fn ranked_movie_serialization() {
+        let rm = RankedMovie {
+            movie: Movie {
+                id: 1,
+                title: "Ирония судьбы".into(),
+                description: String::new(),
+                actors: vec![],
+                genres: vec![],
+                year: 1975,
+                director: "Рязанов".into(),
+                rating: 8.8,
+                poster_url: None,
+            },
+            rank: 1,
+            reason: "Классика".into(),
+        };
+        let json = serde_json::to_string(&rm).unwrap();
+        assert!(json.contains(r#""rank":1"#));
+        assert!(json.contains("Ирония судьбы"));
+    }
+}
