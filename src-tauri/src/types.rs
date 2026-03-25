@@ -44,6 +44,10 @@ pub enum AppError {
     Settings(String),
     #[error("Database error: {0}")]
     Database(String),
+    #[error("Search error: {0}")]
+    Search(String),
+    #[error("Index error: {0}")]
+    Index(String),
 }
 
 // Tauri требует, чтобы ошибка команды была сериализуемой в JSON

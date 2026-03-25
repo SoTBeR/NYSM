@@ -15,7 +15,7 @@ use crate::types::{AppError, Movie, RankedMovie};
 // --------------------------------------------------------------------------
 
 const DEFAULT_API_BASE: &str = "https://api.gen-api.ru";
-const MODEL: &str = "claude-3-5-haiku-20241022";
+const MODEL: &str = "deepseek-chat";
 /// Максимум опросов статуса (3 с × 60 = 3 минуты)
 const MAX_POLLS: u32 = 60;
 const POLL_INTERVAL_SECS: u64 = 3;
@@ -70,13 +70,8 @@ struct MessageContent {
 }
 
 #[derive(Deserialize, Debug)]
-struct Choice {
-    message: MessageContent,
-}
-
-#[derive(Deserialize, Debug)]
 struct ResultItem {
-    choices: Vec<Choice>,
+    message: MessageContent,
 }
 
 #[derive(Deserialize, Debug)]
@@ -91,33 +86,90 @@ struct StatusResponse {
 
 const SYSTEM_PROMPT: &str = "\
 Ты — эксперт по советскому и российскому кино. \
-Тебе дан список фильмов с информацией о них и поисковый запрос пользователя. \
-Твоя задача: выбрать фильмы, которые подходят под запрос, и отранжировать их по убыванию релевантности.
+Тебе дан список фильмов с их ID и информацией о них, а также поисковый запрос пользователя. \
+Твоя задача: выбрать фильмы, которые подходят под запрос, и упорядочить их по убыванию степени совпадения.\n\
+Верни ТОЛЬКО валидный JSON-массив целых чисел — ID подходящих фильмов в порядке убывания релевантности. \
+Без какого-либо текста до или после массива. \
+Если ни один фильм не подходит — верни пустой массив: []";
 
-Верни ТОЛЬКО валидный JSON-массив без какого-либо текста до или после него. \
-Ни один фильм не должен встречаться дважды. \
-Формат каждого объекта:
-{\"movie_id\": <целое число>, \"rank\": <позиция начиная с 1>, \"reason\": \"<1-2 предложения на русском>\"}
-
-Если ни один фильм не подходит, верни пустой массив: []";
-
-/// Формирует текст сообщения пользователя: запрос + список фильмов.
+/// Формирует текст сообщения пользователя: запрос + только совпавшие поля каждого фильма.
+///
+/// Всегда включаются ID, название и год. Остальные поля включаются только если
+/// содержат хотя бы один из токенов запроса — это сокращает размер промпта.
 fn build_user_message(query: &str, movies: &[Movie]) -> String {
-    let mut msg = format!("Запрос пользователя: {query}\n\nСписок фильмов:\n");
+    // Токенизируем запрос: разбиваем по пробелам и ASCII-пунктуации, минимальная длина 2
+    let terms: Vec<String> = query
+        .split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
+        .filter(|s| s.len() >= 2)
+        .map(|s| s.to_lowercase())
+        .collect();
+
+    let matches = |text: &str| -> bool {
+        let lower = text.to_lowercase();
+        terms.iter().any(|t| lower.contains(t.as_str()))
+    };
+
+    let mut msg = format!("Запрос пользователя: {query}\n\nФильмы (ID и совпавшие поля):\n");
+
     for m in movies {
-        msg.push_str(&format!(
-            "\nID: {}\nНазвание: {}\nГод: {}\nДлительность: {} мин\nРежиссёр: {}\nЖанры: {}\nСтудия: {}\nАктёры: {}\nОписание: {}\n---",
-            m.id,
-            m.title,
-            if m.year > 0 { m.year.to_string() } else { "неизвестен".into() },
-            m.duration_minutes.map(|d| d.to_string()).unwrap_or_else(|| "—".into()),
-            if m.director.is_empty() { "неизвестен" } else { &m.director },
-            if m.genres.is_empty() { "не указаны".into() } else { m.genres.join(", ") },
-            if m.studios.is_empty() { "не указана".into() } else { m.studios.join(", ") },
-            if m.actors.is_empty() { "не указаны".into() } else { m.actors.join(", ") },
-            if m.description.is_empty() { "—" } else { &m.description },
-        ));
+        let mut parts: Vec<String> = Vec::new();
+
+        // ID и название — всегда (основной идентификатор)
+        parts.push(format!("ID:{}", m.id));
+        parts.push(format!("Название:{}", m.title));
+
+        // Год — всегда (короткий, полезный контекст)
+        if m.year > 0 {
+            parts.push(format!("Год:{}", m.year));
+        }
+
+        // Режиссёр — только если совпадает
+        if !m.director.is_empty() && matches(&m.director) {
+            parts.push(format!("Режиссёр:{}", m.director));
+        }
+
+        // Актёры — только совпавшие
+        let matched_actors: Vec<&str> = m
+            .actors
+            .iter()
+            .filter(|a| matches(a))
+            .map(|a| a.as_str())
+            .collect();
+        if !matched_actors.is_empty() {
+            parts.push(format!("Актёры:{}", matched_actors.join(", ")));
+        }
+
+        // Жанры — только совпавшие
+        let matched_genres: Vec<&str> = m
+            .genres
+            .iter()
+            .filter(|g| matches(g))
+            .map(|g| g.as_str())
+            .collect();
+        if !matched_genres.is_empty() {
+            parts.push(format!("Жанры:{}", matched_genres.join(", ")));
+        }
+
+        // Описание — только если совпадает, усечённое до 120 символов (кодовых точек)
+        if !m.description.is_empty() && matches(&m.description) {
+            let desc = if m.description.chars().count() > 120 {
+                let byte_end = m
+                    .description
+                    .char_indices()
+                    .nth(120)
+                    .map(|(i, _)| i)
+                    .unwrap_or(m.description.len());
+                format!("{}…", &m.description[..byte_end])
+            } else {
+                m.description.clone()
+            };
+            parts.push(format!("Описание:{desc}"));
+        }
+
+        msg.push_str(&parts.join(" | "));
+        msg.push('\n');
     }
+
     msg
 }
 
@@ -125,14 +177,7 @@ fn build_user_message(query: &str, movies: &[Movie]) -> String {
 // Парсинг ответа AI
 // --------------------------------------------------------------------------
 
-#[derive(Deserialize)]
-struct AiRankedItem {
-    movie_id: u64,
-    rank: u32,
-    reason: String,
-}
-
-/// Парсит JSON-ответ от AI и сопоставляет `movie_id` с входными фильмами.
+/// Парсит JSON-ответ от AI (массив ID) и сопоставляет с входными фильмами.
 /// При ошибке парсинга возвращает фильмы в исходном порядке (fallback).
 fn parse_response(raw: &str, movies: &[Movie]) -> Vec<RankedMovie> {
     // AI иногда оборачивает JSON в блок кода ```json ... ```
@@ -148,7 +193,7 @@ fn parse_response(raw: &str, movies: &[Movie]) -> Vec<RankedMovie> {
         }
     };
 
-    let items: Vec<AiRankedItem> = match serde_json::from_str(json_str) {
+    let ids: Vec<u64> = match serde_json::from_str(json_str) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("[AI] Failed to parse response JSON: {e}\nRaw: {raw}");
@@ -156,24 +201,19 @@ fn parse_response(raw: &str, movies: &[Movie]) -> Vec<RankedMovie> {
         }
     };
 
-    // Строим map id → Movie для быстрого поиска
     let movie_map: std::collections::HashMap<u64, &Movie> =
         movies.iter().map(|m| (m.id, m)).collect();
 
-    let mut ranked: Vec<RankedMovie> = items
-        .into_iter()
-        .filter_map(|item| {
-            movie_map.get(&item.movie_id).map(|&m| RankedMovie {
+    ids.into_iter()
+        .enumerate()
+        .filter_map(|(i, id)| {
+            movie_map.get(&id).map(|&m| RankedMovie {
                 movie: m.clone(),
-                rank: item.rank,
-                reason: item.reason,
+                rank: (i + 1) as u32,
+                reason: String::new(),
             })
         })
-        .collect();
-
-    // Сортируем по рангу на случай если AI вернул их не по порядку
-    ranked.sort_by_key(|r| r.rank);
-    ranked
+        .collect()
 }
 
 fn fallback_ranking(movies: &[Movie]) -> Vec<RankedMovie> {
@@ -218,7 +258,7 @@ async fn read_json<T: for<'de> Deserialize<'de>>(
 /// Отправляет запрос к gen-api.ru и возвращает отранжированные фильмы.
 ///
 /// Поток:
-/// 1. POST `/api/v1/networks/claude-4` → `{ request_id }`
+/// 1. POST `/api/v1/networks/` → `{ request_id }`
 /// 2. Цикл GET `/api/v1/request/get/{request_id}` каждые 3 с
 /// 3. При статусе "success" — парсим ответ и возвращаем `Vec<RankedMovie>`
 pub async fn rank_movies_via_api(
@@ -260,7 +300,7 @@ pub async fn rank_movies_via_api(
         reasoning_effort: ReasoningEffort::Low,
     };
 
-    let start_url = format!("{base}/api/v1/networks/claude");
+    let start_url = format!("{base}/api/v1/networks/deepseek-chat");
     let start_http = client
         .post(&start_url)
         .header("Content-Type", "application/json")
@@ -303,8 +343,7 @@ pub async fn rank_movies_via_api(
                 let raw_content = status_resp
                     .result
                     .and_then(|r| r.into_iter().next())
-                    .and_then(|item| item.choices.into_iter().next())
-                    .map(|c| c.message.content)
+                    .map(|item| item.message.content)
                     .unwrap_or_default();
 
                 eprintln!("[AI] Success. Parsing response...");

@@ -39,8 +39,8 @@
     results = [];
 
     try {
-      // Шаг 1: загружаем все фильмы из SQLite
-      const movies = await invoke<Movie[]>('get_all_movies_from_db');
+      // Шаг 1: полнотекстовый поиск через Tantivy (pre-filter)
+      const movies = await invoke<Movie[]>('search_movies', { query: q, limit: 20 });
 
       if (movies.length === 0) {
         searchState = 'done';
@@ -48,7 +48,7 @@
         return;
       }
 
-      // Шаг 2: AI ранжирование
+      // Шаг 2: AI ранжирование совпавших фильмов
       searchState = 'ranking';
       const ranked = await invoke<RankedMovie[]>('ai_rank_movies', {
         userQuery: q,
@@ -81,7 +81,7 @@
   // Анимированный текст статуса
   const statusText: Record<'idle' | 'searching' | 'ranking' | 'done' | 'error', string> = {
     idle: '',
-    searching: 'Загружаем фильмы из базы...',
+    searching: 'Ищем совпадения в базе...',
     ranking: 'Нейросеть анализирует результаты...',
     done: '',
     error: '',

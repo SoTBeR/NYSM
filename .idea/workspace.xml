@@ -13,15 +13,12 @@
   <component name="ChangeListManager">
     <list default="true" id="70859dba-c421-4f26-8544-9b2bc846e029" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src-tauri/assets/movies_database.db" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/assets/movies_database.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/ai.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/ai.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src-tauri/src/db.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/db.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src-tauri/src/search.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/types.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/types.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/types.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/routes/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/+page.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -79,7 +76,9 @@
     "nodejs_package_manager_path": "npm",
     "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
     "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
+    "org.rust.disableDetachedFileInspection/Users/sotber/Desktop/Development/Apps/NYSM/src-tauri/src/ai.rs": "true",
     "org.rust.first.attach.projects": "true",
+    "org.rust.hideNoCargoProjectNotifications/Users/sotber/Desktop/Development/Apps/NYSM/src-tauri/src/ai.rs": "true",
     "settings.editor.selected.configurable": "preferences.pluginManager",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
@@ -132,7 +131,7 @@
       <updated>1774298129949</updated>
       <workItem from="1774298130974" duration="1898000" />
       <workItem from="1774300061500" duration="832000" />
-      <workItem from="1774452864793" duration="11343000" />
+      <workItem from="1774452864793" duration="13613000" />
     </task>
     <servers />
   </component>
