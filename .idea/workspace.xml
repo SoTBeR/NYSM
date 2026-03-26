@@ -14,7 +14,6 @@
     <list default="true" id="70859dba-c421-4f26-8544-9b2bc846e029" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src-tauri/src/ai.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/ai.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src-tauri/src/search.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src-tauri/src/search.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -126,7 +125,7 @@
       <updated>1774298129949</updated>
       <workItem from="1774298130974" duration="1898000" />
       <workItem from="1774300061500" duration="832000" />
-      <workItem from="1774452864793" duration="14259000" />
+      <workItem from="1774452864793" duration="15269000" />
     </task>
     <servers />
   </component>
