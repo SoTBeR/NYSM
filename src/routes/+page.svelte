@@ -119,11 +119,7 @@
     aria-label="Открыть настройки"
     title="Настройки"
   >
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
-      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
-        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-    </svg>
+    <span class="settings-gear" aria-hidden="true">⚙</span>
   </button>
 </div>
 
@@ -138,7 +134,7 @@
       <div class="star-wrap">
         <span class="hero-star" aria-hidden="true">★</span>
       </div>
-      <h1 class="app-title">NYSM</h1>
+      <h1 class="app-title">КиноЗапрос</h1>
       <p class="app-subtitle">Советские новогодние фильмы</p>
       <div class="header-ornament" aria-hidden="true">
         <span class="ornament-line"></span>
@@ -238,7 +234,7 @@
           </div>
           <p class="empty-title">Найдите советский новогодний фильм</p>
           <p class="empty-hint">
-            Введите название, описание или имя актёра&nbsp;—<br />
+            Введите название, описание или имя актёра&nbsp;-<br />
             нейросеть поможет найти самое подходящее
           </p>
         </div>
@@ -369,9 +365,22 @@
     z-index: 100;
   }
 
+  .settings-gear {
+    font-size: 22px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .settings-btn {
     width: 38px;
     height: 38px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     color: var(--text-secondary);
     border: 1px solid var(--border-medium);
     background: rgba(38, 16, 16, 0.85);
@@ -426,31 +435,44 @@
     color: var(--red-500);
     display: block;
     animation: gentleFloat 4s ease-in-out infinite;
-    filter: drop-shadow(0 0 12px rgba(204, 26, 26, 0.9)) drop-shadow(0 0 24px rgba(204, 26, 26, 0.45));
+    filter: drop-shadow(0 0 6px rgba(204, 26, 26, 0.7));
   }
 
   .app-title {
     font-family: var(--font-display);
-    font-size: var(--text-4xl);
+    font-size: 54px;
     font-weight: 900;
-    color: var(--text-primary);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     line-height: 1;
 
     background: linear-gradient(
-      135deg,
-      #fff 0%,
-      var(--gold-300) 35%,
-      var(--gold-100) 55%,
-      #fff 80%
+      120deg,
+      #B8860B 0%,
+      #D4A017 35%,
+      #FFD700 47%,
+      #FFFACD 50%,
+      #FFD700 53%,
+      #D4A017 65%,
+      #B8860B 100%
     );
+    background-size: 300% auto;
     -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
     background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
 
     text-shadow: none;
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+
+    animation: gold-shimmer 6s ease-in-out infinite;
+  }
+
+  @keyframes gold-shimmer {
+    0%   { background-position: 150% center; }
+    20%  { background-position: 150% center; }
+    60%  { background-position: -150% center; }
+    100% { background-position: -150% center; }
   }
 
   .app-subtitle {
