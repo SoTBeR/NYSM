@@ -202,7 +202,7 @@
             onkeydown={handleKeydown}
             type="search"
             class="search-input"
-            placeholder="Ирония судьбы, советская комедия, Морозко..."
+            placeholder="Введите свой запрос..."
             aria-label="Поисковый запрос"
             autocomplete="off"
             autocorrect="off"
