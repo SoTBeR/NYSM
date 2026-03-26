@@ -71,8 +71,9 @@ On app startup (`lib.rs` `.setup()`):
 
 | Path | Role |
 |---|---|
-| `src/routes/+page.svelte` | Single page: search form, AI toggle, 5 UI states (idle/searching/ranking/done/error) |
-| `src/lib/components/MovieCard.svelte` | Film card: title, year, director, genres, rating, AI reason (hidden when empty) |
+| `src/routes/+page.svelte` | Single page: search form, AI toggle, "Все фильмы" button, 5 UI states (idle/searching/ranking/done/error) |
+| `src/lib/components/MovieCard.svelte` | Film card: title, year, director, genres, duration (formatted h+m), studio (uppercase), AI reason (hidden when empty); clickable — fires `onselect` callback |
+| `src/lib/components/MovieDetailModal.svelte` | Full-detail overlay: all movie fields (genres, description, director, studio uppercase, actors, AI reason); opens on card click, closes on backdrop/Escape |
 | `src/lib/components/SettingsModal.svelte` | Overlay modal: API key + base URL fields, persists via `save_settings` |
 | `src/lib/types.ts` | TypeScript mirrors of Rust structs (`Movie`, `RankedMovie`, `AppSettings`, etc.) |
 | `src/lib/stores/settings.ts` | Svelte stores for `settingsStore` and `settingsLoaded` flag |
@@ -129,9 +130,9 @@ If `ai_rank_movies` fails for any reason (network, parse error, etc.), it silent
 
 ## AI API (gen-api.ru)
 
-- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/claude-4` → `{ request_id: u64 }`
+- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/deepseek-chat` → `{ request_id: u64 }`
 - Polling: `GET https://api.gen-api.ru/api/v1/request/get/{request_id}` every 3s, max 60 polls
-- Model: configured via `MODEL` constant in `ai.rs`, `reasoning_effort: low`, `max_tokens: 2000`
+- Model: `deepseek-chat` — configured via `MODEL` constant in `ai.rs`, `reasoning_effort: low`, `max_tokens: 2000`
 - Response: AI returns a JSON array of integer movie IDs in relevance order — parsed in `parse_response()`, fallback to input order on parse error
 - `request_id` is a **u64 integer** — the `StartResponse` struct uses `u64`
 - Status response shape: `{ status, result: [{ message: { content } }] }` (no `choices` wrapper)

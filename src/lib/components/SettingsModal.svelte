@@ -102,7 +102,7 @@
         <!-- API Key field -->
         <div class="field-group">
           <label for="api-key-input" class="field-label">
-            API ключ нейросети
+            API-ключ нейросети
           </label>
           <div class="input-wrap">
             <input
@@ -110,7 +110,7 @@
               type={showApiKey ? 'text' : 'password'}
               class="field-input"
               bind:value={localApiKey}
-              placeholder="Введите API ключ..."
+              placeholder="Введите API-ключ..."
               autocomplete="off"
               spellcheck="false"
             />

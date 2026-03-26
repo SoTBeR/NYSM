@@ -106,6 +106,16 @@
     }
   });
 
+  // Есть ли API-ключ
+  const hasApiKey = $derived(!!$settingsStore.ai_api_key?.trim());
+
+  // Принудительно выключать AI, если ключ не задан
+  $effect(() => {
+    if (!hasApiKey) {
+      useAi = false;
+    }
+  });
+
   // Анимированный текст статуса
   const statusText: Record<'idle' | 'searching' | 'ranking' | 'done' | 'error', string> = {
     idle: '',
@@ -244,13 +254,22 @@
           Показать все фильмы
         </button>
 
-        <label class="ai-toggle" title="Использовать ИИ для ранжирования результатов">
-          <input type="checkbox" bind:checked={useAi} />
-          <span class="ai-toggle-track">
-            <span class="ai-toggle-thumb"></span>
-          </span>
-          <span class="ai-toggle-label">ИИ-ранжирование</span>
-        </label>
+        <div class="ai-toggle-wrap">
+          <label
+            class="ai-toggle"
+            class:ai-toggle--disabled={!hasApiKey}
+            title={hasApiKey ? 'Использовать ИИ для ранжирования результатов' : 'Укажите API-ключ в настройках'}
+          >
+            <input type="checkbox" bind:checked={useAi} disabled={!hasApiKey} />
+            <span class="ai-toggle-track">
+              <span class="ai-toggle-thumb"></span>
+            </span>
+            <span class="ai-toggle-label">ИИ-ранжирование</span>
+          </label>
+          {#if !hasApiKey}
+            <p class="ai-toggle-hint">Укажите API-ключ в настройках</p>
+          {/if}
+        </div>
       </div>
     </section>
 
@@ -292,7 +311,7 @@
           <p class="empty-title">Найдите советский новогодний фильм</p>
           <p class="empty-hint">
             Введите название, описание или имя актёра&nbsp;-<br />
-            нейросеть поможет найти самое подходящее
+            приложение поможет найти самое подходящее
           </p>
         </div>
 
@@ -970,5 +989,32 @@
     font-size: var(--text-xs);
     color: var(--text-secondary);
     letter-spacing: 0.03em;
+  }
+
+  /* Wrapper keeps the hint text aligned under the toggle */
+  .ai-toggle-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+
+  /* Disabled state — mute everything */
+  .ai-toggle--disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .ai-toggle--disabled .ai-toggle-label {
+    color: var(--text-muted);
+  }
+
+  /* Hint shown only when no API key */
+  .ai-toggle-hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+    text-align: right;
   }
 </style>

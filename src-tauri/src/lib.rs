@@ -61,7 +61,7 @@ pub fn run() {
                         .expect("DB lock must not be poisoned at startup");
                     guard
                         .as_ref()
-                        .map(|conn| db::fetch_all_movies_sync(conn))
+                        .map(db::fetch_all_movies_sync)
                 };
 
                 match movies_result {
