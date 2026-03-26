@@ -43,14 +43,18 @@ npm run tauri build
 ### Data flow
 ```
 User query
-  → invoke('get_all_movies_from_db')  — loads all 14 movies from SQLite
-  → invoke('ai_rank_movies')          — AI API re-ranking
-  → RankedMovie[]                     — rendered as MovieCard components
+  → invoke('search_movies')     — Tantivy full-text search → Vec<Movie> (pre-filtered, score order)
+  → invoke('ai_rank_movies')    — AI API re-ranking (skipped if user toggled AI off)
+  → RankedMovie[]               — rendered as MovieCard components
 ```
+
+If AI is disabled via the toggle, `search_movies` results are converted directly to `RankedMovie[]` preserving Tantivy score order (empty `reason`).
 
 On app startup (`lib.rs` `.setup()`):
 1. Settings are read from `tauri-plugin-store` (`nysm_settings.json`) into `SettingsState` in-memory cache.
 2. SQLite DB is opened into `DbState`.
+3. Tantivy index is initialised from `app_data_dir`.
+4. All 14 movies are fetched from SQLite and indexed into Tantivy (`clear_first: true`).
 
 ### Rust backend (`src-tauri/src/`)
 
@@ -58,16 +62,17 @@ On app startup (`lib.rs` `.setup()`):
 |---|---|
 | `lib.rs` | App entry: plugin registration, state management, command handler registration, startup hooks |
 | `types.rs` | Shared structs: `Movie`, `RankedMovie`, `AppSettings`, `AppError` |
-| `ai.rs` | AI ranking via gen-api.ru — async POST/poll flow, raw body logging on parse errors |
+| `ai.rs` | AI ranking via gen-api.ru — async POST/poll flow, raw body logging on parse errors, fallback to local order on API failure |
 | `db.rs` | SQLite integration: `DbState` (Mutex-wrapped connection), `fetch_all_movies_sync()`, `get_all_movies_from_db` Tauri command |
+| `search.rs` | Tantivy full-text index: Russian stemmer tokenizer, `search_movies` Tauri command, `index_movies_internal` |
 | `settings.rs` | `SettingsState` in-memory cache + `tauri-plugin-store` read/write for `AppSettings` |
 
 ### Frontend (`src/`)
 
 | Path | Role |
 |---|---|
-| `src/routes/+page.svelte` | Single page: search form, 5 UI states (idle/searching/ranking/done/error) |
-| `src/lib/components/MovieCard.svelte` | Film card: poster, title, year, director, genres, rating, AI reason |
+| `src/routes/+page.svelte` | Single page: search form, AI toggle, 5 UI states (idle/searching/ranking/done/error) |
+| `src/lib/components/MovieCard.svelte` | Film card: title, year, director, genres, rating, AI reason (hidden when empty) |
 | `src/lib/components/SettingsModal.svelte` | Overlay modal: API key + base URL fields, persists via `save_settings` |
 | `src/lib/types.ts` | TypeScript mirrors of Rust structs (`Movie`, `RankedMovie`, `AppSettings`, etc.) |
 | `src/lib/stores/settings.ts` | Svelte stores for `settingsStore` and `settingsLoaded` flag |
@@ -79,10 +84,11 @@ All commands use snake_case. Tauri auto-converts camelCase JS object keys to sna
 
 | Command | Rust handler | Notes |
 |---|---|---|
-| `ai_rank_movies` | `ai::ai_rank_movies` | `{ userQuery, movies }` → `RankedMovie[]` |
+| `search_movies` | `search::search_movies` | `{ query, limit? }` → Tantivy search → `Movie[]` in score order |
+| `ai_rank_movies` | `ai::ai_rank_movies` | `{ userQuery, movies }` → `RankedMovie[]`; falls back to input order on API failure |
 | `save_settings` | `settings::save_settings` | `{ settings }` → writes store + updates cache |
 | `load_settings` | `settings::load_settings` | reads store, updates cache → `AppSettings` |
-| `get_all_movies_from_db` | `db::get_all_movies_from_db` | returns all movies from SQLite → `Movie[]` |
+| `get_all_movies_from_db` | `db::get_all_movies_from_db` | returns all 14 movies from SQLite → `Movie[]` |
 
 ### Design system
 Defined entirely in `src/app.css` via CSS custom properties. Key variable families:
@@ -95,13 +101,19 @@ Defined entirely in `src/app.css` via CSS custom properties. Key variable famili
 ## Key Implementation Notes
 
 ### Search approach
-Tantivy was removed — with only 14 films the dataset is trivially small. The frontend calls `get_all_movies_from_db` to fetch all movies, then passes them directly to `ai_rank_movies`. Relevance ranking is handled entirely by the AI layer.
+Tantivy is used as a pre-filter: `search_movies` queries the local index (Russian Snowball stemmer — handles inflected forms like профессия/профессию) and returns matching `Movie[]` in score order. The AI layer then re-ranks this subset. With only 14 films the index is rebuilt from SQLite on every startup.
+
+### AI context — compact field selection
+`build_user_message` in `ai.rs` only includes fields that match query terms per movie (exact substring + 6-char prefix heuristic for Russian inflections). `id`, `title`, and `year` are always included. This keeps AI prompts short.
+
+### AI fallback
+If `ai_rank_movies` fails for any reason (network, parse error, etc.), it silently returns `fallback_ranking` — movies in their input (Tantivy score) order with empty reasons. The error is logged to stderr. The frontend always gets results.
 
 ### Settings flow
 `SettingsState` is an in-memory Mutex cache populated at startup and on every `load_settings`/`save_settings` call. The AI module reads settings via `settings_state.load()` — it does not access the store directly.
 
 ### AI API error debugging
-`ai.rs` reads the raw response bytes before attempting JSON deserialization. On parse failure it logs both the serde error and the full response body to stderr, making it straightforward to diagnose schema mismatches.
+`ai.rs` reads raw response bytes before JSON deserialization. On parse failure it pretty-prints the JSON (decoding `\uXXXX` escapes) and logs both the serde error and full body to stderr.
 
 ## Pending
 
@@ -117,8 +129,9 @@ Tantivy was removed — with only 14 films the dataset is trivially small. The f
 
 ## AI API (gen-api.ru)
 
-- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/claude-4` → `{request_id}` (string UUID)
+- Endpoint: `POST https://api.gen-api.ru/api/v1/networks/claude-4` → `{ request_id: u64 }`
 - Polling: `GET https://api.gen-api.ru/api/v1/request/get/{request_id}` every 3s, max 60 polls
 - Model: configured via `MODEL` constant in `ai.rs`, `reasoning_effort: low`, `max_tokens: 2000`
-- Response: JSON array `[{movie_id, rank, reason}]` — parsed in `parse_response()` with fallback to original order on parse error
-- `request_id` is a **string UUID**, not an integer — the `StartResponse` struct uses `String`
+- Response: AI returns a JSON array of integer movie IDs in relevance order — parsed in `parse_response()`, fallback to input order on parse error
+- `request_id` is a **u64 integer** — the `StartResponse` struct uses `u64`
+- Status response shape: `{ status, result: [{ message: { content } }] }` (no `choices` wrapper)

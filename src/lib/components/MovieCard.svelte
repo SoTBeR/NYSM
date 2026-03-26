@@ -5,22 +5,11 @@
     item: RankedMovie;
     /** Порядковый индекс для stagger-анимации */
     index?: number;
+    /** Вызывается при клике на карточку */
+    onselect?: (item: RankedMovie) => void;
   }
 
-  let { item, index = 0 }: Props = $props();
-
-  /** Форматирует рейтинг как N.N */
-  function formatRating(r: number | null): string {
-    return r != null ? r.toFixed(1) : '—';
-  }
-
-  /** Возвращает класс цвета для рейтинга */
-  function ratingClass(r: number | null): string {
-    if (r == null) return 'rating-low';
-    if (r >= 8) return 'rating-high';
-    if (r >= 6.5) return 'rating-mid';
-    return 'rating-low';
-  }
+  let { item, index = 0, onselect }: Props = $props();
 
   // Computed из props (реактивно через $derived)
   const movie = $derived(item.movie);
@@ -28,10 +17,16 @@
   const reason = $derived(item.reason);
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <article
   class="movie-card"
+  class:clickable={!!onselect}
   style="animation-delay: {index * 60}ms"
   aria-label="{movie.title} ({movie.year})"
+  role={onselect ? 'button' : undefined}
+  tabindex={onselect ? 0 : undefined}
+  onclick={() => onselect?.(item)}
+  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(item); } }}
 >
   <!-- Rank badge -->
   <div class="rank-badge" aria-label="Позиция {rank}">
@@ -43,10 +38,6 @@
     <div class="card-header">
       <div class="title-row">
         <h3 class="movie-title">{movie.title}</h3>
-        <span class="rating {ratingClass(movie.rating)}" title="Рейтинг">
-          <span class="rating-star" aria-hidden="true">★</span>
-          {formatRating(movie.rating)}
-        </span>
       </div>
 
       <div class="meta-row">
@@ -127,11 +118,20 @@
     pointer-events: none;
   }
 
-  .movie-card:hover {
+  .movie-card.clickable {
+    cursor: pointer;
+  }
+
+  .movie-card.clickable:hover {
     border-color: var(--border-gold);
     box-shadow: var(--shadow-md), var(--glow-gold);
     transform: translateY(-2px);
     background: var(--bg-card-hover);
+  }
+
+  .movie-card.clickable:focus-visible {
+    outline: 2px solid var(--red-500);
+    outline-offset: 2px;
   }
 
   /* ---- Rank badge ---- */
@@ -175,7 +175,6 @@
   .title-row {
     display: flex;
     align-items: flex-start;
-    justify-content: space-between;
     gap: var(--space-3);
   }
 
@@ -188,25 +187,6 @@
     flex: 1;
     min-width: 0;
   }
-
-  /* ---- Rating ---- */
-  .rating {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .rating-star {
-    font-size: 12px;
-  }
-
-  .rating-high { color: var(--gold-300); text-shadow: 0 0 8px rgba(245, 204, 69, 0.5); }
-  .rating-mid  { color: var(--gold-400); }
-  .rating-low  { color: var(--text-secondary); }
 
   /* ---- Meta ---- */
   .meta-row {

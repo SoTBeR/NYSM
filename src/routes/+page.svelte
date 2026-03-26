@@ -4,6 +4,7 @@
   import { settingsStore, settingsLoaded } from '$lib/stores/settings';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import MovieCard from '$lib/components/MovieCard.svelte';
+  import MovieDetailModal from '$lib/components/MovieDetailModal.svelte';
   import type { Movie, RankedMovie, AppSettings } from '$lib/types';
 
   // --- State ---
@@ -12,6 +13,8 @@
   let results = $state<RankedMovie[]>([]);
   let errorMsg = $state('');
   let settingsOpen = $state(false);
+  let useAi = $state(true);
+  let selectedMovie = $state<RankedMovie | null>(null);
 
   // Search input ref
   let inputEl: HTMLInputElement | null = $state(null);
@@ -48,14 +51,19 @@
         return;
       }
 
-      // Шаг 2: AI ранжирование совпавших фильмов
-      searchState = 'ranking';
-      const ranked = await invoke<RankedMovie[]>('ai_rank_movies', {
-        userQuery: q,
-        movies,
-      });
+      if (useAi) {
+        // Шаг 2: AI ранжирование совпавших фильмов
+        searchState = 'ranking';
+        const ranked = await invoke<RankedMovie[]>('ai_rank_movies', {
+          userQuery: q,
+          movies,
+        });
+        results = ranked;
+      } else {
+        // Локальный режим: конвертируем Movie[] → RankedMovie[], сохраняя порядок Tantivy
+        results = movies.map((movie, i) => ({ movie, rank: i + 1, reason: '' }));
+      }
 
-      results = ranked;
       searchState = 'done';
     } catch (err) {
       errorMsg = typeof err === 'string' ? err : 'Произошла ошибка при поиске';
@@ -135,7 +143,11 @@
         <span class="hero-star" aria-hidden="true">★</span>
       </div>
       <h1 class="app-title">КиноЗапрос</h1>
-      <p class="app-subtitle">Советские новогодние фильмы</p>
+      <p class="app-subtitle">
+        Советские новогодние фильмы
+        <br>
+        По нечёткому запросу
+        </p>
       <div class="header-ornament" aria-hidden="true">
         <span class="ornament-line"></span>
         <span class="ornament-diamond">◆</span>
@@ -195,6 +207,14 @@
           {/if}
         </button>
       </form>
+
+      <label class="ai-toggle" title="Использовать ИИ для ранжирования результатов">
+        <input type="checkbox" bind:checked={useAi} />
+        <span class="ai-toggle-track">
+          <span class="ai-toggle-thumb"></span>
+        </span>
+        <span class="ai-toggle-label">ИИ-ранжирование</span>
+      </label>
     </section>
 
     <!-- Status line -->
@@ -277,7 +297,7 @@
           <ol class="results-list" aria-label="Список найденных фильмов">
             {#each results as item, i (item.movie.id)}
               <li>
-                <MovieCard {item} index={i} />
+                <MovieCard {item} index={i} onselect={(m) => (selectedMovie = m)} />
               </li>
             {/each}
           </ol>
@@ -291,6 +311,9 @@
 
 <!-- Settings Modal -->
 <SettingsModal bind:open={settingsOpen} onclose={() => (settingsOpen = false)} />
+
+<!-- Movie Detail Modal -->
+<MovieDetailModal movie={selectedMovie} onclose={() => (selectedMovie = null)} />
 
 <style>
   /* ============================================================
@@ -371,6 +394,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    transform: translateY(-1px);
   }
 
   .settings-btn {
@@ -796,5 +820,63 @@
 
   .results-list li {
     display: block;
+  }
+
+  /* ============================================================
+     AI toggle
+     ============================================================ */
+  .ai-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    user-select: none;
+    justify-content: flex-end;
+    margin-top: var(--space-2);
+  }
+
+  .ai-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .ai-toggle-track {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    border-radius: var(--radius-full);
+    background: var(--border-medium);
+    border: 1px solid var(--border-subtle);
+    transition: background var(--transition-base), border-color var(--transition-base);
+    flex-shrink: 0;
+  }
+
+  .ai-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform var(--transition-base), background var(--transition-base);
+  }
+
+  .ai-toggle input:checked + .ai-toggle-track {
+    background: var(--red-700);
+    border-color: var(--red-500);
+  }
+
+  .ai-toggle input:checked + .ai-toggle-track .ai-toggle-thumb {
+    transform: translateX(16px);
+    background: var(--gold-300);
+  }
+
+  .ai-toggle-label {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    letter-spacing: 0.03em;
   }
 </style>
