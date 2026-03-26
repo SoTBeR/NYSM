@@ -15,6 +15,14 @@
   const movie = $derived(item.movie);
   const rank = $derived(item.rank);
   const reason = $derived(item.reason);
+
+  function formatDuration(mins: number | null): string {
+    if (!mins) return '—';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h === 0) return `${m} мин`;
+    return m === 0 ? `${h} ч` : `${h} ч ${m} мин`;
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -44,11 +52,11 @@
         <span class="meta-year">{movie.year}</span>
         {#if movie.duration_minutes}
           <span class="meta-sep" aria-hidden="true">·</span>
-          <span class="meta-duration">{movie.duration_minutes} мин</span>
+          <span class="meta-duration">{formatDuration(movie.duration_minutes)}</span>
         {/if}
         {#if movie.director}
           <span class="meta-sep" aria-hidden="true">·</span>
-          <span class="meta-director">реж. {movie.director}</span>
+          <span class="meta-director">{movie.director}</span>
         {/if}
         {#if movie.studios.length > 0}
           <span class="meta-sep" aria-hidden="true">·</span>
@@ -221,7 +229,7 @@
     font-size: var(--text-sm);
     color: var(--text-muted);
     font-style: italic;
-    text-transform: lowercase;
+    text-transform: uppercase;
   }
 
   /* ---- Genres ---- */

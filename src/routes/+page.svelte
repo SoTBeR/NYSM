@@ -15,6 +15,7 @@
   let settingsOpen = $state(false);
   let useAi = $state(true);
   let selectedMovie = $state<RankedMovie | null>(null);
+  let loadingAll = $state(false);
 
   // Search input ref
   let inputEl: HTMLInputElement | null = $state(null);
@@ -68,6 +69,25 @@
     } catch (err) {
       errorMsg = typeof err === 'string' ? err : 'Произошла ошибка при поиске';
       searchState = 'error';
+    }
+  }
+
+  // --- Show all movies ---
+  async function handleShowAll() {
+    loadingAll = true;
+    searchState = 'searching';
+    errorMsg = '';
+    results = [];
+
+    try {
+      const movies = await invoke<Movie[]>('get_all_movies_from_db');
+      results = movies.map((movie, i) => ({ movie, rank: i + 1, reason: '' }));
+      searchState = 'done';
+    } catch (err) {
+      errorMsg = typeof err === 'string' ? err : 'Не удалось загрузить фильмы';
+      searchState = 'error';
+    } finally {
+      loadingAll = false;
     }
   }
 
@@ -208,13 +228,30 @@
         </button>
       </form>
 
-      <label class="ai-toggle" title="Использовать ИИ для ранжирования результатов">
-        <input type="checkbox" bind:checked={useAi} />
-        <span class="ai-toggle-track">
-          <span class="ai-toggle-thumb"></span>
-        </span>
-        <span class="ai-toggle-label">ИИ-ранжирование</span>
-      </label>
+      <div class="toggle-row">
+        <button
+          type="button"
+          class="btn-show-all"
+          onclick={handleShowAll}
+          disabled={loadingAll || searchState === 'searching' || searchState === 'ranking'}
+          aria-label="Показать все фильмы"
+        >
+          {#if loadingAll}
+            <span class="show-all-spinner" aria-hidden="true"></span>
+          {:else}
+            <span class="show-all-icon" aria-hidden="true">◈</span>
+          {/if}
+          Показать все фильмы
+        </button>
+
+        <label class="ai-toggle" title="Использовать ИИ для ранжирования результатов">
+          <input type="checkbox" bind:checked={useAi} />
+          <span class="ai-toggle-track">
+            <span class="ai-toggle-thumb"></span>
+          </span>
+          <span class="ai-toggle-label">ИИ-ранжирование</span>
+        </label>
+      </div>
     </section>
 
     <!-- Status line -->
@@ -823,8 +860,64 @@
   }
 
   /* ============================================================
-     AI toggle
+     Toggle row (show-all button + AI toggle)
      ============================================================ */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-2);
+  }
+
+  .btn-show-all {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 28px;
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-full);
+    transition:
+      color var(--transition-base),
+      border-color var(--transition-base),
+      background-color var(--transition-base),
+      box-shadow var(--transition-base);
+  }
+
+  .btn-show-all:hover:not(:disabled) {
+    color: var(--gold-300);
+    border-color: var(--border-gold);
+    background: var(--bg-card-hover);
+    box-shadow: var(--glow-gold);
+  }
+
+  .btn-show-all:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .show-all-icon {
+    font-size: 10px;
+    color: var(--gold-500);
+    line-height: 1;
+  }
+
+  /* Spinner inside show-all button */
+  .show-all-spinner {
+    width: 11px;
+    height: 11px;
+    border: 1.5px solid rgba(245, 204, 69, 0.25);
+    border-top-color: var(--gold-300);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
   .ai-toggle {
     display: flex;
     align-items: center;
@@ -832,7 +925,6 @@
     cursor: pointer;
     user-select: none;
     justify-content: flex-end;
-    margin-top: var(--space-2);
   }
 
   .ai-toggle input {

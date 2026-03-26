@@ -102,7 +102,7 @@
           {#if m.studios.length > 0}
             <div class="detail-cell">
               <p class="section-label">Студия</p>
-              <p class="cell-value">{m.studios.join(', ')}</p>
+              <p class="cell-value cell-value--studio">{m.studios.join(', ')}</p>
             </div>
           {/if}
         </div>
@@ -303,6 +303,10 @@
     color: var(--text-primary);
     font-weight: 400;
     line-height: 1.45;
+  }
+
+  .cell-value--studio {
+    text-transform: uppercase;
   }
 
   /* ---- Genres ---- */
