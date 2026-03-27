@@ -1,7 +1,7 @@
 //! Модуль доступа к SQLite базе данных фильмов.
 //!
 //! БД bundled внутри приложения: `src-tauri/assets/movies_database.db`.
-//! В production читается из `$RESOURCE_DIR/movies_database.db`.
+//! В production читается из `$RESOURCE_DIR/assets/movies_database.db`.
 //! В режиме разработки — из `$CARGO_MANIFEST_DIR/assets/movies_database.db`.
 //!
 //! Схема (упрощённо):
@@ -73,6 +73,7 @@ pub fn resolve_db_path(app: &tauri::AppHandle) -> PathBuf {
         app.path()
             .resource_dir()
             .expect("Cannot resolve resource dir")
+            .join("assets")
             .join("movies_database.db")
     }
 }
