@@ -94,7 +94,7 @@ npm run tauri dev
 > Например:
 >
 > ```bash
-> sudo xattr -rd com.apple.quarantine ~/Downloads/КиноЗапрос_0.1.0_aarch64.dmg
+> sudo xattr -rd com.apple.quarantine ~/Downloads/NYSM_0.1.0_aarch64.dmg
 > ```
 >
 > Команда снимает атрибут карантина, который macOS автоматически проставляет на все файлы, загруженные из интернета. После этого `.dmg` откроется и приложение запустится в обычном режиме.
