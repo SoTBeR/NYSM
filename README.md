@@ -79,7 +79,7 @@ npm run tauri dev
 
 ## Установка на macOS из .DMG
 
-Готовые сборки доступны на странице [Releases](https://github.com/sotber/nysm/releases). Скачайте `.dmg`-файл, откройте его и перетащите приложение в папку «Программы».
+Готовые сборки доступны на странице [Releases](https://github.com/sotber/nysm/releases). Скачайте `.dmg`-файл, откройте его и перетащите приложение в папку «Applications».
 
 > **Важно: macOS Gatekeeper**
 >
