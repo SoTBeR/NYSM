@@ -63,7 +63,7 @@
 
 ```bash
 # Клонировать репозиторий
-git clone https://github.com/your-username/nysm.git
+git clone https://github.com/sotber/nysm.git
 cd nysm
 
 # Установить зависимости
