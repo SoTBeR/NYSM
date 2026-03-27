@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>NYSM</h1>
+<h1>КиноЗапрос</h1>
 
 <p><em>Приложение для поиска советских новогодних фильмов по нечёткому запросу</em></p>
 
@@ -63,7 +63,7 @@
 
 ```bash
 # Клонировать репозиторий
-git clone https://github.com/your-username/nysm.git
+git clone https://github.com/sotber/nysm.git
 cd nysm
 
 # Установить зависимости
