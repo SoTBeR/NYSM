@@ -403,4 +403,74 @@
     padding: 2px var(--space-3);
     box-shadow: 0 0 8px rgba(204, 26, 26, 0.35);
   }
+
+  /* ============================================================
+     Mobile — ≤ 600px
+     ============================================================ */
+  @media (max-width: 600px) {
+    /* Reduce overlay padding so panel fills more of the screen */
+    .modal-overlay {
+      padding: var(--space-3);
+      align-items: flex-end;
+    }
+
+    .modal-panel {
+      width: 100%;
+      max-height: 95vh;
+      border-radius: var(--radius-xl) var(--radius-xl) var(--radius-md) var(--radius-md);
+    }
+
+    .modal-header {
+      padding: var(--space-4) var(--space-4) var(--space-3);
+    }
+
+    .modal-title {
+      font-size: var(--text-lg);
+    }
+
+    /* Ensure close button meets 44×44px touch target */
+    .modal-close {
+      width: 44px;
+      height: 44px;
+      top: var(--space-2);
+      right: var(--space-2);
+    }
+
+    .modal-body {
+      padding: var(--space-4);
+      gap: var(--space-4);
+    }
+
+    .modal-divider {
+      margin: 0 var(--space-4);
+    }
+
+    .modal-footer {
+      padding: var(--space-3) var(--space-4);
+    }
+
+    /* Grid stacks to single column on narrow screens */
+    .detail-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-3);
+    }
+
+    .ai-section {
+      padding: var(--space-3);
+    }
+  }
+
+  /* ============================================================
+     Tablet — 601px–900px
+     ============================================================ */
+  @media (min-width: 601px) and (max-width: 900px) {
+    .modal-overlay {
+      padding: var(--space-4);
+    }
+
+    .modal-panel {
+      width: min(600px, 100%);
+      max-height: 90vh;
+    }
+  }
 </style>

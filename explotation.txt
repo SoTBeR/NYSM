@@ -1,0 +1,439 @@
+NYSM — КиноЗапрос
+Полный разбор работы приложения: от запроса пользователя до выдачи результата
+================================================================================
+
+
+================================================================================
+СЦЕНАРИЙ 1: ЗАПУСК ПРИЛОЖЕНИЯ
+================================================================================
+
+Rust-сторона — src-tauri/src/lib.rs, функция run()
+----------------------------------------------------
+
+Шаг 1.  run()
+           Вызывается платформенной точкой входа
+           (на мобайле помечена атрибутом #[cfg_attr(mobile, tauri::mobile_entry_point)]).
+
+Шаг 2.  tauri::Builder::default()
+           Начинает конструирование Tauri-приложения.
+
+Шаг 3.  .plugin(tauri_plugin_opener::init())
+           Регистрирует плагин открытия файлов/ссылок через ОС.
+
+Шаг 4.  .plugin(tauri_plugin_store::Builder::default().build())
+           Регистрирует плагин key-value хранилища.
+           Файл nysm_settings.json создаётся при первом обращении в app_data_dir.
+
+Шаг 5.  .manage(settings::SettingsState::new())
+           Создаёт SettingsState(Mutex<AppSettings::default()>) — кэш настроек
+           с пустыми строками ai_api_key и ai_base_url.
+
+Шаг 6.  .manage(db::DbState::new())
+           Создаёт DbState(Mutex<None>) — слот соединения с БД, изначально пустой.
+
+Шаг 7.  .manage(search::SearchState::new())
+           Создаёт SearchState(Mutex<None>) — слот Tantivy-индекса, изначально пустой.
+
+Шаг 8.  .invoke_handler(tauri::generate_handler![...])
+           Регистрирует 5 IPC-команд:
+           ai_rank_movies, save_settings, load_settings,
+           get_all_movies_from_db, search_movies.
+
+Шаг 9.  .setup(|app| { ... })
+           Выполняется синхронно до открытия окна. Включает 4 подшага:
+
+  Шаг 9а. settings::init_settings(&app_handle, &settings_state)
+             → read_from_store(app): открывает nysm_settings.json через app.store(),
+               читает ключ "settings", десериализует в AppSettings.
+               При отсутствии файла возвращает AppSettings::default().
+             → state.update(settings): записывает результат в Mutex-кэш.
+             При ошибке — предупреждение в stderr, запуск продолжается.
+
+  Шаг 9б. db::resolve_db_path(&app_handle)
+             Определяет путь к SQLite-файлу:
+             - #[cfg(mobile)]:               resource_dir() / assets / movies_database.db
+             - desktop debug:                CARGO_MANIFEST_DIR / assets / movies_database.db
+             - desktop release:              resource_dir() / assets / movies_database.db
+
+  Шаг 9в. db::init_db(&db_state, db_path)
+             Проверяет существование файла.
+             Connection::open(db_path) — открывает соединение rusqlite.
+             Выполняет:
+               PRAGMA foreign_keys = ON;
+               PRAGMA journal_mode = WAL;
+               PRAGMA synchronous = NORMAL;
+             Сохраняет Connection в db_state.0 (Some(conn)).
+
+  Шаг 9г. search::init_index(&search_state, app_data_dir)
+             → SearchIndex::open_or_create(app_data_dir/nysm_index):
+               - create_dir_all — создаёт директорию индекса если нет.
+               - MovieSchema::build() — собирает схему Tantivy:
+                   id, year, duration_minutes: u64 (STORED | INDEXED | FAST)
+                   title, description, actors, genres, studios, director:
+                     TextOptions с токенайзером "russian", WithFreqsAndPositions.
+               - TextAnalyzer: SimpleTokenizer → LowerCaser → Stemmer(Russian).
+                 Регистрируется под именем "russian" в реестре токенайзеров индекса.
+               - Index::open_or_create(MmapDirectory, schema).
+                 При несовпадении схемы — удаляет и пересоздаёт индекс.
+               - reader_builder().reload_policy(OnCommitWithDelay).try_into()
+                   создаёт IndexReader.
+             Сохраняет SearchIndex { index, reader, schema } в search_state.0.
+
+Шаг 10. Индексация фильмов из БД:
+           db_state.0.lock() → guard.as_ref().map(db::fetch_all_movies_sync):
+             fetch_all_movies_sync(conn):
+               Выполняет один SQL-запрос с 7 LEFT JOIN и GROUP BY movie_id:
+                 SELECT m.movie_id, m.title, COALESCE(m.description,''),
+                        m.release_year, m.duration_minutes,
+                        GROUP_CONCAT(DISTINCT TRIM(d.director_name)),
+                        GROUP_CONCAT(DISTINCT TRIM(a.actor_name)),
+                        GROUP_CONCAT(DISTINCT TRIM(g.genre_name)),
+                        GROUP_CONCAT(DISTINCT TRIM(s.studio_name))
+                 FROM movies m
+                 LEFT JOIN movie_directors md ... LEFT JOIN directors d ...
+                 LEFT JOIN movie_actors ma   ... LEFT JOIN actors a ...
+                 LEFT JOIN movie_genres mg   ... LEFT JOIN genres g ...
+                 LEFT JOIN movie_studios ms  ... LEFT JOIN studios s ...
+                 GROUP BY m.movie_id ORDER BY m.release_year ASC
+               csv_to_vec() разбивает GROUP_CONCAT-строки в Vec<String>.
+               Первый режиссёр из списка → поле director: String.
+               rating: None (поле отсутствует в текущей БД).
+               Возвращает Vec<Movie> (14 записей).
+
+           search::index_movies_internal(&search_state, &movies, true):
+             IndexWriter с 50 МБ буфером.
+             clear_first=true → writer.delete_all_documents().
+             Для каждого Movie — строит TantivyDocument, writer.add_document(doc).
+             writer.commit() — сброс на диск.
+             idx.reader.reload() — принудительное обновление searcher
+               (обходит задержку OnCommitWithDelay).
+             Печатает "[NYSM] Tantivy index ready." в stderr.
+
+Шаг 11. .setup() возвращает Ok(()). Tauri открывает главное окно.
+
+Frontend-сторона — src/routes/+page.svelte
+------------------------------------------
+
+Шаг 12. +layout.ts: export const ssr = false
+           Отключает SSR (обязательно для статического адаптера Tauri).
+
+Шаг 13. +page.svelte монтируется. Инициализируются Svelte 5 runes:
+           query = ''          searchState = 'idle'    results = []
+           errorMsg = ''       settingsOpen = false    useAi = true
+           selectedMovie = null                        loadingAll = false
+           settingsStore: { ai_api_key: '', ai_base_url: '' }
+           settingsLoaded = false
+
+Шаг 14. $effect блоки:
+           Effect 1: query === '' → searchState='idle', results=[], errorMsg=''.
+           Effect 2: !hasApiKey → useAi = false.
+
+Шаг 15. onMount(async () => { ... }):
+           invoke<AppSettings>('load_settings')
+             → Rust load_settings: read_from_store() → state.update() → Ok(AppSettings)
+           settingsStore.set(settings) — обновляет Svelte store.
+           hasApiKey пересчитывается; если ключ пустой — useAi = false.
+           settingsLoaded.set(true).
+
+Шаг 16. UI готов. Отображается idle-состояние (SVG плёнки + снежинки).
+
+
+================================================================================
+СЦЕНАРИЙ 2: ПОИСК С ВКЛЮЧЁННЫМ ИИ
+================================================================================
+
+Предусловие: ai_api_key непустой, hasApiKey=true, useAi=true.
+
+Шаг 1.  Пользователь вводит текст в <input bind:value={query}>.
+           query обновляется при каждом нажатии клавиши.
+
+Шаг 2.  Пользователь нажимает Enter или кнопку "Найти".
+           <form onsubmit={handleSearch}> срабатывает.
+
+Шаг 3.  handleSearch(e?) — src/routes/+page.svelte:
+           e?.preventDefault().
+           q = query.trim(). Если пустой — выход.
+           searchState = 'searching', errorMsg = '', results = [].
+           UI: 3 скелетон-карточки с shimmer-анимацией.
+
+Шаг 4.  invoke<Movie[]>('search_movies', { query: q, limit: 20 })
+
+  Rust: search::search_movies — src-tauri/src/search.rs
+           query.trim().is_empty() — нет, продолжаем.
+           limit = 20.
+
+  search_movies_internal(&search_state, &query, 20):
+           search_state.0.lock() — получаем SearchIndex.
+           searcher = idx.reader.searcher().
+           QueryParser::for_index(index, [title, director, actors, genres, studios, description]).
+           Веса: title×4.0, director×2.0, actors×1.5, genres×1.5, studios×1.2.
+           query.to_lowercase() → query_lower.
+           query_parser.parse_query(&query_lower) — парсинг с Russian Stemmer.
+             При ошибке — fallback на оригинальный регистр.
+           searcher.search(&parsed, &TopDocs::with_limit(20))
+             → Vec<(f32_score, DocAddress)> в убывающем порядке BM25.
+           Для каждого DocAddress: doc(addr) → get_first(s.id) → u64.
+           Возвращает Vec<u64> — ID фильмов в порядке релевантности.
+
+  Если ids пустой → Ok(vec![]).
+  Иначе: fetch_all_movies_sync(conn) — загружает все 14 фильмов из SQLite.
+  HashMap<u64, Movie>; ids.filter_map(|id| map.get(&id).cloned()).
+  Возвращает Vec<Movie> в порядке Tantivy-оценки.
+
+Шаг 5.  invoke разрешается: Movie[] получен.
+           Если movies.length === 0: searchState='done', results=[].
+           UI: "Ничего не найдено".
+
+Шаг 6.  useAi === true:
+           searchState = 'ranking'.
+           UI: "Нейросеть анализирует результаты...".
+           invoke<RankedMovie[]>('ai_rank_movies', { userQuery: q, movies })
+
+  Rust: ai::ai_rank_movies — src-tauri/src/ai.rs
+           settings_state.load() — клонирует AppSettings из Mutex-кэша.
+           rank_movies_via_api(&user_query, &movies, &api_key, &base_url):
+
+  build_user_message(query, movies):
+           Токенизация запроса: split по пробелам и ASCII-пунктуации,
+             фильтр len≥2, lowercase.
+           Для каждого Movie:
+             Всегда: "ID:{id} | Название:{title} | Год:{year}".
+             Условно (если поле содержит токен запроса):
+               - точное вхождение подстроки
+               - ИЛИ совпадение первых 6 Unicode-символов (prefix heuristic
+                 для русских флексий: "профессия"/"профессию" → "профес")
+             Если совпало: добавляет Режиссёр, Актёры, Жанры, Описание (≤120 символов).
+           Возвращает компактную строку.
+
+  Шаг POST: client.post("{base}/api/v1/networks/deepseek-chat")
+              Authorization: Bearer {api_key}
+              Body: { model: "deepseek-chat", messages: [system, user],
+                      max_tokens: 2000, is_sync: false,
+                      stream: false, reasoning_effort: "low" }
+           read_json::<StartResponse>() → StartResponse { request_id: u64 }.
+
+  Шаг POLL (до 60 итераций, интервал 3 сек):
+           sleep(3s).
+           client.get("{base}/api/v1/request/get/{request_id}")
+           read_json::<StatusResponse>() → { status, result }
+           Лог: "[AI] Poll N/60: status=..."
+           "processing"|"queued"|"pending" → продолжить.
+           "success" → raw_content = result[0].message.content.
+
+  parse_response(&raw_content, movies):
+           Снимает markdown-обёртку ```json ... ``` если есть.
+           serde_json::from_str::<Vec<u64>>(json_str).
+           При ошибке: логирует, возвращает fallback_ranking(movies).
+           При успехе: HashMap<u64, &Movie>;
+             ids.enumerate().map(|(i, id)| RankedMovie {
+               movie: clone, rank: i+1, reason: String::new() })
+           Возвращает Vec<RankedMovie>.
+
+           "failed"|"error" → Err(AppError::Ai).
+           Таймаут (60 опросов) → Err(AppError::Ai).
+
+  Любой Err из rank_movies_via_api:
+           fallback_ranking(&movies) — исходный порядок Tantivy,
+             rank 1..N, reason "".
+           Возвращает Ok(fallback). Фронтенд ВСЕГДА получает результат.
+
+Шаг 7.  invoke разрешается: RankedMovie[] получен.
+           results = ranked. searchState = 'done'.
+
+Шаг 8.  Svelte рендерит results:
+           "Найдено фильмов: N".
+           <ol class="results-list">
+           Для каждого item: <MovieCard {item} index={i} onselect={...} />
+
+  MovieCard.svelte — для каждой карточки:
+           animation-delay: index * 60ms (stagger fadeSlideUp).
+           Бейдж ранга (круглый, top-right).
+           Название (Playfair Display), год (красный),
+             formatDuration(duration_minutes) → "X ч Y мин",
+             режиссёр (курсив), первая студия (uppercase, muted).
+           Жанровые теги (gold chips, flex-wrap).
+           Описание (3 строки, -webkit-line-clamp).
+           До 3 актёров + "и др." если больше.
+           {#if reason} — блок причины AI (сейчас всегда пустой).
+           onclick / onkeydown(Enter|Space) → onselect?.(item).
+
+
+================================================================================
+СЦЕНАРИЙ 3: ПОИСК БЕЗ ИИ
+================================================================================
+
+Шаги 1–5 идентичны Сценарию 2. Расхождение на шаге 6:
+
+Шаг 6.  useAi === false:
+           results = movies.map((movie, i) => ({ movie, rank: i+1, reason: '' }))
+           Tantivy-порядок сохраняется. AI-вызов не делается.
+           searchState = 'done' — немедленно.
+
+Рендеринг идентичен Сценарию 2. Блок AI reason не показывается (reason === '').
+
+
+================================================================================
+СЦЕНАРИЙ 4: КНОПКА "ПОКАЗАТЬ ВСЕ ФИЛЬМЫ"
+================================================================================
+
+Шаг 1.  Пользователь нажимает <button class="btn-show-all" onclick={handleShowAll}>.
+           Кнопка задизейблена при loadingAll/searching/ranking.
+
+Шаг 2.  handleShowAll() — src/routes/+page.svelte:
+           loadingAll = true (спиннер на кнопке).
+           searchState = 'searching'. errorMsg = ''. results = [].
+
+Шаг 3.  invoke<Movie[]>('get_all_movies_from_db')
+
+  Rust: db::get_all_movies_from_db — src-tauri/src/db.rs
+           db_state.0.lock() → guard.as_ref() → &Connection.
+           Если None → Err(AppError::Database("DB not initialised")).
+           fetch_all_movies_sync(conn) — тот же GROUP_CONCAT JOIN запрос.
+           Возвращает Ok(Vec<Movie>) — 14 фильмов, порядок release_year ASC.
+
+Шаг 4.  invoke разрешается:
+           results = movies.map((movie, i) => ({ movie, rank: i+1, reason: '' })).
+           searchState = 'done'.
+
+Шаг 5.  finally { loadingAll = false } — спиннер убирается.
+
+Шаг 6.  UI рендерит 14 MovieCard. query не очищается.
+           Если пользователь очистит поле — $effect сбросит results в idle.
+
+
+================================================================================
+СЦЕНАРИЙ 5: КЛИК НА КАРТОЧКУ → МОДАЛЬНОЕ ОКНО → ЗАКРЫТИЕ
+================================================================================
+
+Открытие:
+
+Шаг 1.  Пользователь кликает (или нажимает Enter/Space) на <article class="movie-card">.
+
+Шаг 2.  onclick={() => onselect?.(item)} в MovieCard.svelte.
+           onselect = (m) => (selectedMovie = m) — колбэк из +page.svelte.
+
+Шаг 3.  selectedMovie = <RankedMovie> в +page.svelte.
+
+Шаг 4.  <MovieDetailModal movie={selectedMovie} onclose={() => (selectedMovie = null)} />
+           prop movie стал ненулевым — компонент рендерится.
+
+Шаг 5.  MovieDetailModal.svelte:
+           open = $derived(movie !== null) → true.
+           m = $derived(movie?.movie ?? null) → объект Movie.
+           {#if open && m} рендерит:
+             .modal-overlay: position:fixed, inset:0, z-index:1000.
+             .modal-panel (600px, max-height: calc(100vh - space-12)):
+               Шапка: year (красный), formatDuration → "X ч Y мин", title.
+               Жанры (gold chips).
+               Описание ("О фильме", line-height:1.65, без обрезки).
+               Сетка: режиссёр | студия (uppercase).
+               Актёры (все, в виде chips).
+               AI-причина: {#if movie?.reason} — сейчас всегда пусто.
+               Подвал: "Позиция в выдаче #N" (если rank > 0).
+           role="dialog" aria-modal="true" aria-labelledby="detail-title".
+
+Закрытие (три пути):
+
+  Path A — клик на фон:
+             handleBackdropClick(e): e.target === e.currentTarget → onclose().
+  Path B — кнопка ×:
+             onclick={onclose}.
+  Path C — клавиша Escape:
+             handleKeydown(e): e.key==='Escape' → onclose().
+
+  onclose() → selectedMovie = null → open = false → компонент размонтируется.
+  IPC-вызовов нет.
+
+
+================================================================================
+СЦЕНАРИЙ 6: СОХРАНЕНИЕ НАСТРОЕК (ВВОД API-КЛЮЧА)
+================================================================================
+
+Открытие:
+
+Шаг 1.  Клик на <button class="settings-btn"> (иконка ⚙).
+           settingsOpen = true в +page.svelte.
+
+Шаг 2.  <SettingsModal bind:open={settingsOpen}> получает open=true.
+
+Шаг 3.  {#if open} рендерит overlay.
+
+Шаг 4.  $effect при открытии:
+           Одиночная подписка на settingsStore → localApiKey, localBaseUrl.
+           error = ''.
+
+Шаг 5.  Два поля ввода:
+           "API-ключ нейросети" (type="password", кнопка показать/скрыть).
+           "URL API" (опционально).
+           Привязаны к localApiKey / localBaseUrl.
+
+Сохранение:
+
+Шаг 6.  Пользователь вводит ключ, нажимает "Сохранить".
+
+Шаг 7.  handleSave() — src/lib/components/SettingsModal.svelte:
+           saving = true (анимация "..." на кнопке).
+           settings = { ai_api_key: localApiKey.trim(), ai_base_url: localBaseUrl.trim() }.
+           invoke<void>('save_settings', { settings })
+
+  Rust: settings::save_settings — src-tauri/src/settings.rs
+    write_to_store(&app, &settings):
+           app.store("nysm_settings.json") — открывает/создаёт файл.
+           serde_json::to_value(&settings) → Value.
+           store.set("settings", value).
+           store.save() — сброс на диск.
+
+    state.update(settings):
+           Mutex::lock() → заменяет AppSettings в in-memory кэше.
+           С этого момента ai_rank_movies читает новый ключ.
+
+    Возвращает Ok(()).
+
+Шаг 8.  invoke разрешается:
+           settingsStore.set(settings) — обновляет Svelte store.
+           hasApiKey пересчитывается → true (если ключ непустой).
+           $effect снимает useAi=false.
+           AI-переключатель разблокируется (disabled убирается).
+           onclose() → settingsOpen = false. Модал закрывается.
+
+Шаг 9.  finally { saving = false }.
+
+Отмена:
+
+           handleCancel() или Escape или клик на фон:
+           onclose() без IPC. localApiKey/localBaseUrl изменения отброшены.
+
+
+================================================================================
+СКВОЗНЫЕ ЗАМЕТКИ
+================================================================================
+
+IPC-сериализация:
+  Tauri v2 автоматически конвертирует camelCase JS-ключи в snake_case Rust-параметры.
+  { userQuery: q, movies } → user_query: String, movies: Vec<Movie>.
+  Rust-структуры сериализуются snake_case → приходят на фронтенд как snake_case.
+
+reason всегда пустой:
+  parse_response создаёт RankedMovie { reason: String::new() }.
+  SYSTEM_PROMPT просит модель вернуть только JSON-массив ID без объяснений.
+  Блок AI-причины в MovieCard и MovieDetailModal существует как задел на будущее.
+
+rating всегда None:
+  fetch_all_movies_sync всегда выставляет rating: None.
+  В текущей схеме БД данных о рейтинге нет.
+
+Блокировки Mutex и async:
+  search_movies и get_all_movies_from_db захватывают Mutex, выполняют
+  fetch_all_movies_sync синхронно внутри блокировки, затем освобождают её
+  ДО любой точки .await. Это безопасно на Tokio runtime.
+
+Fallback-цепочка:
+  ai_rank_movies (Tauri-команда) оборачивает rank_movies_via_api в match:
+  любой Err → Ok(fallback_ranking(&movies)).
+  Промис invoke('ai_rank_movies') НИКОГДА не отклоняется.
+  catch в handleSearch срабатывает только при ошибке search_movies.
+
+Перестройка индекса при каждом запуске:
+  index_movies_internal с clear_first=true.
+  14 фильмов — операция занимает <10 мс.
+  Гарантирует синхронность индекса и БД без механизма инкрементальных обновлений.

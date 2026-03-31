@@ -1017,4 +1017,101 @@
     line-height: 1.3;
     text-align: right;
   }
+
+  /* ============================================================
+     Mobile — ≤ 600px
+     ============================================================ */
+  @media (max-width: 600px) {
+    .main-content {
+      padding: var(--space-8) 0 var(--space-10);
+    }
+
+    .app-header {
+      margin-bottom: var(--space-6);
+      gap: var(--space-2);
+    }
+
+    .app-title {
+      font-size: 36px;
+      letter-spacing: 0.05em;
+    }
+
+    .app-subtitle {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+    }
+
+    /* Tighter page padding so cards reach closer to the edge */
+    .page-container {
+      padding: 0 var(--space-3);
+    }
+
+    /* Stack search form vertically so the button doesn't squish */
+    .search-form {
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .search-btn {
+      height: 44px;
+      width: 100%;
+      min-width: unset;
+    }
+
+    .search-input {
+      height: 44px;
+    }
+
+    /* Stack toggle row on mobile */
+    .toggle-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-3);
+    }
+
+    .ai-toggle-wrap {
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    .ai-toggle {
+      justify-content: flex-start;
+    }
+
+    .ai-toggle-hint {
+      text-align: left;
+    }
+
+    /* Smaller empty/error state padding */
+    .empty-state {
+      padding: var(--space-10) 0;
+    }
+
+    .error-state,
+    .no-results {
+      padding: var(--space-8) 0;
+    }
+
+    /* Results count smaller */
+    .results-count {
+      font-size: 11px;
+    }
+  }
+
+  /* ============================================================
+     Tablet — 601px–900px
+     ============================================================ */
+  @media (min-width: 601px) and (max-width: 900px) {
+    .main-content {
+      padding: var(--space-10) 0 var(--space-12);
+    }
+
+    .app-title {
+      font-size: 44px;
+    }
+
+    .page-container {
+      padding: 0 var(--space-4);
+    }
+  }
 </style>

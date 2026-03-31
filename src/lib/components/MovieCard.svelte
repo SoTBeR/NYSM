@@ -286,4 +286,29 @@
     font-style: normal;
     margin-right: 4px;
   }
+
+  /* ============================================================
+     Mobile — ≤ 600px
+     ============================================================ */
+  @media (max-width: 600px) {
+    .movie-card {
+      padding: var(--space-3);
+      gap: var(--space-3);
+    }
+
+    /* Genres already flex-wrap — no change needed; confirmed above */
+
+    /* Less right padding since rank badge is the same size */
+    .card-content {
+      padding-right: var(--space-6);
+    }
+
+    .movie-title {
+      font-size: var(--text-base);
+    }
+
+    .ai-reason {
+      padding-left: var(--space-2);
+    }
+  }
 </style>

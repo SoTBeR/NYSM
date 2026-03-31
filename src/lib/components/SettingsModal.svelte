@@ -380,4 +380,52 @@
   }
   .saving-dots span:nth-child(2) { animation-delay: 0.2s; }
   .saving-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  /* ============================================================
+     Mobile — ≤ 600px
+     ============================================================ */
+  @media (max-width: 600px) {
+    /* Add overlay padding so panel sits above the safe area */
+    .modal-overlay {
+      padding: var(--space-3);
+      align-items: flex-end;
+    }
+
+    .modal-panel {
+      width: 100%;
+      max-width: 100%;
+      border-radius: var(--radius-xl) var(--radius-xl) var(--radius-md) var(--radius-md);
+    }
+
+    .modal-header {
+      padding: var(--space-4) var(--space-4);
+    }
+
+    /* Ensure close button meets 44×44px touch target */
+    .modal-close {
+      width: 44px;
+      height: 44px;
+    }
+
+    .modal-body {
+      padding: var(--space-4);
+      gap: var(--space-4);
+    }
+
+    .modal-divider {
+      margin: 0 var(--space-4);
+    }
+
+    .modal-footer {
+      padding: var(--space-4);
+    }
+
+    /* Make action buttons full-width and taller for touch */
+    .modal-footer .btn-secondary,
+    .modal-footer .btn-primary {
+      flex: 1;
+      height: 44px;
+      justify-content: center;
+    }
+  }
 </style>
