@@ -101,7 +101,7 @@ pub async fn load_settings(
     Ok(settings)
 }
 
-/// Инициализация настроек при старте приложения —
+/// Инициализация настроек при старте приложения -
 /// читает из store и заполняет in-memory кэш.
 pub fn init_settings(app: &tauri::AppHandle, state: &SettingsState) -> Result<(), AppError> {
     let settings = read_from_store(app).unwrap_or_default();

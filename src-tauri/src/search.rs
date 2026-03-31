@@ -103,7 +103,7 @@ impl SearchIndex {
             }
         };
 
-        // Register Russian stemmer — must match the tokenizer name used in the schema.
+        // Register Russian stemmer - must match the tokenizer name used in the schema.
         // Registration must happen before any indexing or searching.
         let russian_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
             .filter(LowerCaser)
@@ -383,7 +383,7 @@ mod tests {
         let state = make_search_state(&tmp);
         index_movies_internal(&state, &make_test_movies(), true).unwrap();
 
-        // An empty-ish query hits parse error path — ok to return empty or error
+        // An empty-ish query hits parse error path - ok to return empty or error
         // We just verify it doesn't panic
         let _ = search_movies_internal(&state, "", 10);
     }

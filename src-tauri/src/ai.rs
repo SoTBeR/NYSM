@@ -58,7 +58,7 @@ struct AiRequest {
 // --------------------------------------------------------------------------
 
 /// Ответ на POST-запрос создания задачи.
-/// request_id — целое число (u64), возвращаемое gen-api.ru.
+/// request_id - целое число (u64), возвращаемое gen-api.ru.
 #[derive(Deserialize, Debug)]
 struct StartResponse {
     request_id: u64,
@@ -85,22 +85,22 @@ struct StatusResponse {
 // --------------------------------------------------------------------------
 
 const SYSTEM_PROMPT: &str = "\
-Ты — эксперт по советскому и российскому кино. \
+Ты - эксперт по советскому и российскому кино. \
 Тебе дан список фильмов с их ID и информацией о них, а также поисковый запрос пользователя. \
-Твоя задача — отобрать только действительно подходящие фильмы и упорядочить их по убыванию релевантности.\n\
+Твоя задача - отобрать только действительно подходящие фильмы и упорядочить их по убыванию релевантности.\n\
 Правила отбора:\n\
 - Включай фильм ТОЛЬКО если есть явная, конкретная связь с запросом: по теме, жанру, персонажам, сюжету, названию, режиссёру или актёрам.\n\
-- Косвенной или надуманной связи недостаточно — если нужно долго объяснять, почему фильм подходит, он не подходит.\n\
+- Косвенной или надуманной связи недостаточно - если нужно долго объяснять, почему фильм подходит, он не подходит.\n\
 - Исключай фильмы, которые совпадают с запросом лишь по общим словам (например, «кино», «фильм», «советский»).\n\
-- Лучше вернуть меньше фильмов, но все — по делу.\n\
-Верни ТОЛЬКО валидный JSON-массив целых чисел — ID подходящих фильмов в порядке убывания релевантности. \
+- Лучше вернуть меньше фильмов, но все - по делу.\n\
+Верни ТОЛЬКО валидный JSON-массив целых чисел - ID подходящих фильмов в порядке убывания релевантности. \
 Без какого-либо текста до или после массива. \
 Пример: [3,1,7,2]";
 
 /// Формирует текст сообщения пользователя: запрос + только совпавшие поля каждого фильма.
 ///
 /// Всегда включаются ID, название и год. Остальные поля включаются только если
-/// содержат хотя бы один из токенов запроса — это сокращает размер промпта.
+/// содержат хотя бы один из токенов запроса - это сокращает размер промпта.
 fn build_user_message(query: &str, movies: &[Movie]) -> String {
     // Токенизируем запрос: разбиваем по пробелам и ASCII-пунктуации, минимальная длина 2
     let terms: Vec<String> = query
@@ -112,13 +112,12 @@ fn build_user_message(query: &str, movies: &[Movie]) -> String {
     let matches = |text: &str| -> bool {
         let text_lower = text.to_lowercase();
         terms.iter().any(|t| {
-            // Exact substring match first
             if text_lower.contains(t.as_str()) {
                 return true;
             }
-            // Prefix match: compare first min(6, len) chars of term against each word in text.
-            // Handles Russian inflections: профессия/профессию/профессии all share prefix "профес"
+
             let t_prefix = &t[..t.char_indices().nth(6).map(|(i, _)| i).unwrap_or(t.len())];
+
             if t_prefix.chars().count() >= 4 {
                 text_lower.split_whitespace().any(|word| {
                     let w_prefix =
@@ -136,21 +135,21 @@ fn build_user_message(query: &str, movies: &[Movie]) -> String {
     for m in movies {
         let mut parts: Vec<String> = Vec::new();
 
-        // ID и название — всегда (основной идентификатор)
+        // ID и название - всегда (основной идентификатор)
         parts.push(format!("ID:{}", m.id));
         parts.push(format!("Название:{}", m.title));
 
-        // Год — всегда (короткий, полезный контекст)
+        // Год - всегда (короткий, полезный контекст)
         if m.year > 0 {
             parts.push(format!("Год:{}", m.year));
         }
 
-        // Режиссёр — только если совпадает
+        // Режиссёр - только если совпадает
         if !m.director.is_empty() && matches(&m.director) {
             parts.push(format!("Режиссёр:{}", m.director));
         }
 
-        // Актёры — только совпавшие
+        // Актёры - только совпавшие
         let matched_actors: Vec<&str> = m
             .actors
             .iter()
@@ -161,7 +160,7 @@ fn build_user_message(query: &str, movies: &[Movie]) -> String {
             parts.push(format!("Актёры:{}", matched_actors.join(", ")));
         }
 
-        // Жанры — только совпавшие
+        // Жанры - только совпавшие
         let matched_genres: Vec<&str> = m
             .genres
             .iter()
@@ -172,7 +171,7 @@ fn build_user_message(query: &str, movies: &[Movie]) -> String {
             parts.push(format!("Жанры:{}", matched_genres.join(", ")));
         }
 
-        // Описание — только если совпадает, усечённое до 120 символов (кодовых точек)
+        // Описание - только если совпадает, усечённое до 120 символов (кодовых точек)
         if !m.description.is_empty() && matches(&m.description) {
             let desc = if m.description.chars().count() > 120 {
                 let byte_end = m
@@ -282,7 +281,7 @@ async fn read_json<T: for<'de> Deserialize<'de>>(
 /// Поток:
 /// 1. POST `/api/v1/networks/` → `{ request_id }`
 /// 2. Цикл GET `/api/v1/request/get/{request_id}` каждые 3 с
-/// 3. При статусе "success" — парсим ответ и возвращаем `Vec<RankedMovie>`
+/// 3. При статусе "success" - парсим ответ и возвращаем `Vec<RankedMovie>`
 pub async fn rank_movies_via_api(
     user_query: &str,
     movies: &[Movie],

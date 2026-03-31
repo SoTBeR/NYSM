@@ -2,12 +2,12 @@
 //!
 //! БД bundled внутри приложения: `src-tauri/assets/movies_database.db`.
 //! В production читается из `$RESOURCE_DIR/assets/movies_database.db`.
-//! В режиме разработки — из `$CARGO_MANIFEST_DIR/assets/movies_database.db`.
+//! В режиме разработки - из `$CARGO_MANIFEST_DIR/assets/movies_database.db`.
 //!
 //! Схема (упрощённо):
 //!   movies(movie_id, title, description, release_year, duration_minutes)
-//!   actors, directors, genres, studios — справочники
-//!   movie_actors, movie_directors, movie_genres, movie_studios — связи M:N
+//!   actors, directors, genres, studios - справочники
+//!   movie_actors, movie_directors, movie_genres, movie_studios - связи M:N
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -62,8 +62,8 @@ pub fn init_db(state: &DbState, db_path: PathBuf) -> Result<(), AppError> {
 }
 
 /// Возвращает путь к файлу БД.
-/// В dev-сборке (`debug_assertions`) — из директории cargo-проекта.
-/// В release — из bundled ресурсов Tauri.
+/// В dev-сборке (`debug_assertions`) - из директории cargo-проекта.
+/// В release - из bundled ресурсов Tauri.
 pub fn resolve_db_path(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
