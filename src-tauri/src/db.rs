@@ -1,8 +1,13 @@
 //! Модуль доступа к SQLite базе данных фильмов.
 //!
 //! БД bundled внутри приложения: `src-tauri/assets/movies_database.db`.
-//! В production читается из `$RESOURCE_DIR/assets/movies_database.db`.
-//! В режиме разработки - из `$CARGO_MANIFEST_DIR/assets/movies_database.db`.
+//!
+//! Платформенная стратегия доступа к файлу:
+//!   - Desktop dev  : `$CARGO_MANIFEST_DIR/assets/movies_database.db` (debug_assertions)
+//!   - Desktop release: `$RESOURCE_DIR/assets/movies_database.db`
+//!   - Android/iOS  : DB вшита в бинарник через `include_bytes!` и копируется в
+//!     `app_local_data_dir` при первом запуске (APK/IPA assets
+//!     недоступны через std::fs напрямую).
 //!
 //! Схема (упрощённо):
 //!   movies(movie_id, title, description, release_year, duration_minutes)
@@ -33,9 +38,65 @@ impl DbState {
 // Инициализация
 // --------------------------------------------------------------------------
 
+/// На мобильных платформах (Android / iOS) APK/IPA assets недоступны через
+/// `std::fs`. БД вшивается в бинарник через `include_bytes!` и при первом
+/// запуске копируется в `app_local_data_dir`. При последующих запусках файл
+/// уже существует и шаг копирования пропускается.
+#[cfg(mobile)]
+fn ensure_db_copy(target: &PathBuf) -> Result<(), AppError> {
+    if target.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::Database(format!("Cannot create DB directory: {e}")))?;
+    }
+    const DB_BYTES: &[u8] = include_bytes!("../assets/movies_database.db");
+    std::fs::write(target, DB_BYTES)
+        .map_err(|e| AppError::Database(format!("Cannot write DB to local storage: {e}")))?;
+    eprintln!("[NYSM] DB extracted to {}", target.display());
+    Ok(())
+}
+
+/// Возвращает путь к файлу БД.
+///
+/// - Desktop dev  : `$CARGO_MANIFEST_DIR/assets/movies_database.db`
+/// - Desktop release: `$RESOURCE_DIR/assets/movies_database.db`
+/// - Mobile (Android/iOS): `app_local_data_dir/movies_database.db`
+#[cfg(not(mobile))]
+pub fn resolve_db_path(app: &tauri::AppHandle) -> PathBuf {
+    if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join("movies_database.db")
+    } else {
+        app.path()
+            .resource_dir()
+            .expect("Cannot resolve resource dir")
+            .join("assets")
+            .join("movies_database.db")
+    }
+}
+
+#[cfg(mobile)]
+pub fn resolve_db_path(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
+        .app_local_data_dir()
+        .expect("Cannot resolve app_local_data_dir on mobile")
+        .join("movies_database.db")
+}
+
 /// Открывает соединение с БД по пути `db_path`.
 /// Включает foreign keys и WAL-режим для безопасного параллельного чтения.
+///
+/// На мобильных платформах вызывает `ensure_db_copy` перед открытием, чтобы
+/// гарантировать наличие файла в доступной для std::fs директории.
 pub fn init_db(state: &DbState, db_path: PathBuf) -> Result<(), AppError> {
+    // На мобильных платформах копируем DB из бинарника в локальное хранилище
+    // до любой проверки существования файла.
+    #[cfg(mobile)]
+    ensure_db_copy(&db_path)?;
+
     if !db_path.exists() {
         return Err(AppError::Database(format!(
             "DB file not found: {}",
@@ -59,23 +120,6 @@ pub fn init_db(state: &DbState, db_path: PathBuf) -> Result<(), AppError> {
         .map_err(|_| AppError::Database("Lock poisoned".into()))?;
     *guard = Some(conn);
     Ok(())
-}
-
-/// Возвращает путь к файлу БД.
-/// В dev-сборке (`debug_assertions`) - из директории cargo-проекта.
-/// В release - из bundled ресурсов Tauri.
-pub fn resolve_db_path(app: &tauri::AppHandle) -> PathBuf {
-    if cfg!(debug_assertions) {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("assets")
-            .join("movies_database.db")
-    } else {
-        app.path()
-            .resource_dir()
-            .expect("Cannot resolve resource dir")
-            .join("assets")
-            .join("movies_database.db")
-    }
 }
 
 // --------------------------------------------------------------------------
